@@ -40,6 +40,10 @@ DB_USERNAME=postgres
 DB_PASSWORD=postgres
 DB_NAME=attendance_system
 
+# SSL Configuration (for remote databases)
+DB_SSL=false
+DB_SSL_REJECT_UNAUTHORIZED=true
+
 # JWT Configuration
 JWT_SECRET=your-secret-key-change-in-production
 JWT_EXPIRES_IN=24h

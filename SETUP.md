@@ -35,6 +35,11 @@ DB_USERNAME=postgres
 DB_PASSWORD=your_postgres_password
 DB_NAME=attendance_system
 
+# SSL Configuration (for remote databases like Aiven, AWS RDS, etc.)
+# Set DB_SSL=true if your database requires SSL connection
+DB_SSL=false
+DB_SSL_REJECT_UNAUTHORIZED=true
+
 # JWT Configuration
 JWT_SECRET=your-secret-key-change-in-production-min-32-chars
 JWT_EXPIRES_IN=24h
