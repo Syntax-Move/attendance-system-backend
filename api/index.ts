@@ -1,3 +1,6 @@
+// Ensure pg is loaded before Sequelize
+import 'pg';
+
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
