@@ -14,12 +14,21 @@ import jwtConfig from '../config/jwt.config';
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('jwt.secret'),
-        signOptions: {
-          expiresIn: configService.get<string>('jwt.expiresIn'),
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('jwt.secret');
+        let expiresIn = configService.get('jwt.expiresIn');
+
+        if (!secret) {
+          throw new Error('JWT_SECRET is required');
+        }
+        
+        return {
+          secret,
+          signOptions: {
+            expiresIn: expiresIn || '24h',
+          },
+        };
+      },
       inject: [ConfigService],
     }),
     ConfigModule.forFeature(jwtConfig),
