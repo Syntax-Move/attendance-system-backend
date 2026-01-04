@@ -74,6 +74,8 @@ npm run start:prod
 
 ## API Documentation
 
+### Interactive Documentation (Swagger UI)
+
 Swagger documentation is available at `/docs` when the server is running.
 
 Access it at: `http://localhost:3000/docs`
@@ -83,6 +85,10 @@ The Swagger UI provides:
 - Request/response schemas
 - Authentication support (JWT Bearer token)
 - All endpoint documentation
+
+### Complete API Reference
+
+For detailed API documentation with examples, request/response formats, and business rules, see [API_DOCUMENTATION.md](./API_DOCUMENTATION.md).
 
 ## API Endpoints
 

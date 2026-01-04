@@ -90,7 +90,6 @@ export class EmployeesService {
           designation: createEmployeeDto.designation,
           dailySalary: createEmployeeDto.dailySalary,
           joiningDate: new Date(createEmployeeDto.joiningDate),
-          isActive: true,
         } as any,
         { transaction },
       );
@@ -123,19 +122,24 @@ export class EmployeesService {
     if (updateEmployeeDto.joiningDate !== undefined) {
       updateData.joiningDate = new Date(updateEmployeeDto.joiningDate);
     }
-    if (updateEmployeeDto.isActive !== undefined) {
-      updateData.isActive = updateEmployeeDto.isActive;
-    }
 
     await employee.update(updateData);
+
+    // Update user's isActive if provided
+    if (updateEmployeeDto.isActive !== undefined) {
+      const user = await this.userModel.findByPk(employee.userId);
+      if (user) {
+        await user.update({ isActive: updateEmployeeDto.isActive });
+      }
+    }
+
     return this.findById(id);
   }
 
   async deactivate(id: string): Promise<Employee> {
     const employee = await this.findById(id);
-    await employee.update({ isActive: false });
 
-    // Also deactivate user
+    // Deactivate user (isActive is only in User model)
     const user = await this.userModel.findByPk(employee.userId);
     if (user) {
       await user.update({ isActive: false });

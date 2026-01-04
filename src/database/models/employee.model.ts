@@ -14,6 +14,8 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { User } from './user.model';
 import { Attendance } from './attendance.model';
+import { MonthlyAttendanceSummary } from './monthly-attendance-summary.model';
+import { SalaryDeductionLedger } from './salary-deduction-ledger.model';
 
 @Table({
   tableName: 'employees',
@@ -32,6 +34,8 @@ export class Employee extends Model<Employee> {
     type: DataType.UUID,
     allowNull: false,
     unique: true,
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
   })
   declare userId: string;
 
@@ -65,23 +69,31 @@ export class Employee extends Model<Employee> {
   })
   declare joiningDate: Date;
 
-  @Default(true)
-  @Column({
-    type: DataType.BOOLEAN,
-    allowNull: false,
-  })
-  declare isActive: boolean;
-
   @CreatedAt
   declare createdAt: Date;
 
   @UpdatedAt
   declare updatedAt: Date;
 
-  @BelongsTo(() => User)
+  @BelongsTo(() => User, { foreignKey: 'userId', as: 'user' })
   user: User;
 
-  @HasMany(() => Attendance)
+  @HasMany(() => Attendance, {
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  })
   attendances: Attendance[];
+
+  @HasMany(() => MonthlyAttendanceSummary, {
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  })
+  monthlySummaries: MonthlyAttendanceSummary[];
+
+  @HasMany(() => SalaryDeductionLedger, {
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  })
+  deductionLedgers: SalaryDeductionLedger[];
 }
 

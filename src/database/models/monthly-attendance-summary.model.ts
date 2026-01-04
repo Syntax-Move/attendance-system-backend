@@ -35,6 +35,8 @@ export class MonthlyAttendanceSummary extends Model<MonthlyAttendanceSummary> {
   @Column({
     type: DataType.UUID,
     allowNull: false,
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
   })
   declare employeeId: string;
 

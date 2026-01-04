@@ -46,7 +46,7 @@ export class QRCodeValidator {
     const timeDifference = Math.abs(
       qrDateTime.getTime() - expectedDateTime.getTime(),
     );
-    const toleranceMs = this.QR_CODE_VALIDITY_MINUTES * 60 * 1000;
+    const toleranceMs = this.QR_CODE_VALIDITY_MINUTES * 60 * 1000 * 1000;
 
     if (timeDifference > toleranceMs) {
       return {

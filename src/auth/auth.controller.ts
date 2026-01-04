@@ -11,9 +11,19 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'User login' })
-  @ApiResponse({ status: 200, description: 'Login successful', type: LoginResponseDto })
-  @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiOperation({
+    summary: 'User login',
+    description: 'Authenticates a user with email and password. Returns a JWT access token that must be included in subsequent requests as a Bearer token in the Authorization header.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Login successful. Returns JWT access token and user information.',
+    type: LoginResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid credentials or account is inactive',
+  })
   async login(@Body() loginDto: LoginDto): Promise<LoginResponseDto> {
     return this.authService.login(loginDto);
   }

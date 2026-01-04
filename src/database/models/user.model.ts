@@ -56,7 +56,10 @@ export class User extends Model<User> {
   @UpdatedAt
   declare updatedAt: Date;
 
-  @HasOne(() => Employee)
+  @HasOne(() => Employee, {
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  })
   employee: Employee;
 }
 

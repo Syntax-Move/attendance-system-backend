@@ -29,6 +29,8 @@ export class SalaryDeductionLedger extends Model<SalaryDeductionLedger> {
   @Column({
     type: DataType.UUID,
     allowNull: false,
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
   })
   declare employeeId: string;
 
@@ -36,6 +38,8 @@ export class SalaryDeductionLedger extends Model<SalaryDeductionLedger> {
   @Column({
     type: DataType.UUID,
     allowNull: true,
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
   })
   declare attendanceId: string;
 
