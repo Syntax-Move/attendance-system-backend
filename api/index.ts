@@ -16,6 +16,15 @@ async function createApp(): Promise<express.Express> {
     return cachedApp;
   }
 
+  // Suppress Express deprecation warnings for serverless environment
+  const originalEmitWarning = process.emitWarning;
+  process.emitWarning = function (warning: any, ...args: any[]) {
+    if (warning && typeof warning === 'string' && warning.includes("'app.router' is deprecated")) {
+      return; // Suppress this specific warning
+    }
+    return originalEmitWarning.apply(process, [warning, ...args]);
+  };
+
   const expressApp = express();
   const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp));
 
@@ -67,6 +76,10 @@ async function createApp(): Promise<express.Express> {
   });
 
   await app.init();
+  
+  // Restore original emitWarning
+  process.emitWarning = originalEmitWarning;
+  
   cachedApp = expressApp;
   return expressApp;
 }
