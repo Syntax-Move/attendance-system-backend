@@ -52,13 +52,13 @@ export class Attendance extends Model<Attendance> {
     type: DataType.DATE,
     allowNull: true,
   })
-  declare checkInTime: Date;
+  declare checkInTime: Date | null;
 
   @Column({
     type: DataType.DATE,
     allowNull: true,
   })
-  declare checkOutTime: Date;
+  declare checkOutTime: Date | null;
 
   @Column({
     type: DataType.INTEGER,
@@ -82,11 +82,41 @@ export class Attendance extends Model<Attendance> {
   })
   declare salaryEarned: number;
 
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'True if this is an unpaid leave day (no check-in/check-out)',
+  })
+  declare unpaidLeave: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'True if this is a public holiday',
+  })
+  declare isPublicHoliday: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+    comment: 'True if this attendance record is active (has check-in or is past date)',
+  })
+  declare isActive: boolean;
+
   @CreatedAt
   declare createdAt: Date;
 
   @UpdatedAt
   declare updatedAt: Date;
+
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  declare deletedAt: Date | null;
 
   @BelongsTo(() => Employee)
   employee: Employee;

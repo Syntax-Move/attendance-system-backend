@@ -56,6 +56,12 @@ export class User extends Model<User> {
   @UpdatedAt
   declare updatedAt: Date;
 
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  declare deletedAt: Date | null;
+
   @HasOne(() => Employee, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',

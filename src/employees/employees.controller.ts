@@ -6,8 +6,10 @@ import {
   Patch,
   Param,
   UseGuards,
+  Delete,
+  Query,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
@@ -24,8 +26,33 @@ export class EmployeesController {
   @Get()
   @UseGuards(AdminGuard)
   @ApiOperation({
-    summary: 'Get all employees (Admin only)',
-    description: 'Retrieves a list of all employees in the system with their associated user information (email, role, isActive). Results are ordered by creation date (newest first).',
+    summary: 'Get all employees with filters (Admin only)',
+    description: 'Retrieves a list of all employees in the system with optional search and filter options. Results are ordered by creation date (newest first).',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search term to filter by name, email, phone, or designation',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    enum: ['full-time', 'probation', 'notice-period'],
+    description: 'Filter by employee status',
+  })
+  @ApiQuery({
+    name: 'isActive',
+    required: false,
+    type: Boolean,
+    description: 'Filter by active status (true/false)',
+  })
+  @ApiQuery({
+    name: 'designation',
+    required: false,
+    type: String,
+    description: 'Filter by designation',
   })
   @ApiResponse({
     status: 200,
@@ -58,8 +85,18 @@ export class EmployeesController {
     },
   })
   @ApiResponse({ status: 403, description: 'Admin access required' })
-  findAll() {
-    return this.employeesService.findAll();
+  findAll(
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('isActive') isActive?: string,
+    @Query('designation') designation?: string,
+  ) {
+    return this.employeesService.findAll({
+      search,
+      status,
+      isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+      designation,
+    });
   }
 
   @Get(':id')
@@ -215,6 +252,33 @@ export class EmployeesController {
   @ApiResponse({ status: 404, description: 'Employee not found' })
   deactivate(@Param('id') id: string) {
     return this.employeesService.deactivate(id);
+  }
+
+  @Delete(':id')
+  @UseGuards(AdminGuard)
+  @ApiOperation({
+    summary: 'Delete employee (Admin only)',
+    description: 'Soft deletes an employee by setting deletedAt timestamp. Deleted employees and their associated user accounts will not be returned in queries and cannot login.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Employee UUID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Employee deleted successfully' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Admin access required' })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  delete(@Param('id') id: string) {
+    return this.employeesService.delete(id);
   }
 }
 

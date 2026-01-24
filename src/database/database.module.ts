@@ -7,6 +7,9 @@ import {
   Attendance,
   MonthlyAttendanceSummary,
   SalaryDeductionLedger,
+  LeaveRequest,
+  LeaveBalance,
+  PublicHoliday,
 } from './models';
 
 @Module({
@@ -23,6 +26,9 @@ import {
             Attendance,
             MonthlyAttendanceSummary,
             SalaryDeductionLedger,
+            LeaveRequest,
+            LeaveBalance,
+            PublicHoliday,
           ],
           // Global default: return model instances (not raw objects)
           // To get raw objects, explicitly pass { raw: true } in queries
@@ -37,6 +43,9 @@ import {
       Attendance,
       MonthlyAttendanceSummary,
       SalaryDeductionLedger,
+      LeaveRequest,
+      LeaveBalance,
+      PublicHoliday,
     ]),
   ],
   exports: [SequelizeModule],

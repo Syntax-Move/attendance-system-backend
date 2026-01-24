@@ -36,12 +36,22 @@ export class CreateEmployeeDto {
   @IsString()
   designation: string;
 
-  @ApiProperty({ example: 1000, description: 'Daily salary amount' })
+  @ApiProperty({ example: 22000, description: 'Monthly salary amount' })
   @IsNumber()
-  dailySalary: number;
+  monthlySalary: number;
 
   @ApiProperty({ example: '2024-01-01', description: 'Joining date (YYYY-MM-DD)' })
   @IsDateString()
   joiningDate: string;
+
+  @ApiProperty({ 
+    example: 'full-time', 
+    description: 'Employee status',
+    enum: ['full-time', 'probation', 'notice-period'],
+    default: 'full-time'
+  })
+  @IsOptional()
+  @IsEnum(['full-time', 'probation', 'notice-period'])
+  status?: string;
 }
 

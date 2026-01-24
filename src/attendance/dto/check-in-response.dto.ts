@@ -11,7 +11,7 @@ export class CheckInResponseDto {
   date: string;
 
   @ApiProperty({ example: '2024-01-15T12:00:00.000Z' })
-  checkInTime: Date;
+  checkInTime: Date | null;
 
   @ApiProperty({ example: 'Check-in successful' })
   message: string;

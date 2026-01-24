@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
+import { MissingAttendanceProcessorService } from './missing-attendance-processor.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { EmployeeGuard } from '../common/guards/employee.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -33,6 +34,7 @@ export class AttendanceController {
   constructor(
     private readonly attendanceService: AttendanceService,
     private readonly employeesService: EmployeesService,
+    private readonly missingAttendanceProcessor: MissingAttendanceProcessorService,
   ) {}
 
   @Get('today')
@@ -302,6 +304,187 @@ export class AttendanceController {
   @ApiResponse({ status: 403, description: 'Admin access required' })
   async deleteAllAttendances() {
     return this.attendanceService.deleteAllAttendances();
+  }
+
+  @Post('process-missing')
+  @UseGuards(AdminGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Process missing attendance for current month (Admin only)',
+    description: 'Processes missing attendance days for all employees or a specific employee. For each missing working day, it first deducts from leave balance, then counts as short minutes if leave is exhausted.',
+  })
+  @ApiQuery({
+    name: 'employeeId',
+    required: false,
+    type: String,
+    description: 'Optional employee ID. If not provided, processes for all employees.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Missing attendance processed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        processedDays: { type: 'number' },
+        leaveDeducted: { type: 'number', description: 'Total minutes deducted from leave' },
+        shortMinutesAdded: { type: 'number', description: 'Total short minutes added' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Admin access required' })
+  async processMissingAttendance(@Query('employeeId') employeeId?: string) {
+    if (employeeId) {
+      return this.missingAttendanceProcessor.processCurrentMonthMissingAttendance(employeeId);
+    } else {
+      return this.missingAttendanceProcessor.processCurrentMonthMissingAttendance();
+    }
+  }
+
+  @Get('dashboard')
+  @UseGuards(EmployeeGuard)
+  @ApiOperation({
+    summary: 'Get user dashboard/info (Employee only)',
+    description: 'Returns comprehensive user information including current month stats, missing minutes, working days (excluding public holidays), salary info, and leave requests.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User dashboard retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        employee: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            fullName: { type: 'string' },
+            designation: { type: 'string' },
+            dailySalary: { type: 'number' },
+          },
+        },
+        currentMonth: {
+          type: 'object',
+          properties: {
+            month: { type: 'number' },
+            year: { type: 'number' },
+            totalWorkedMinutes: { type: 'number' },
+            totalShortMinutes: { type: 'number' },
+            missingMinutes: { type: 'number' },
+            allowedShortMinutes: { type: 'number' },
+            totalSalaryEarned: { type: 'number' },
+            totalDeductions: { type: 'number' },
+            netSalary: { type: 'number' },
+            workingDays: { type: 'number' },
+            daysWorked: { type: 'number' },
+            leaveRequests: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  date: { type: 'string' },
+                  hours: { type: 'number' },
+                  status: { type: 'string' },
+                  reason: { type: 'string', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        totalSalary: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Employee access required' })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  async getUserDashboard(@CurrentUser() user: CurrentUserPayload) {
+    const employee = await this.employeesService.findByUserId(user.userId);
+    return this.attendanceService.getUserDashboard(employee.id);
+  }
+
+  @Post('leave-request')
+  @UseGuards(EmployeeGuard)
+  @ApiOperation({
+    summary: 'Request leave for a specific day (Employee only)',
+    description: 'Submit a leave request for today or a future date. Can be full day (9 hours) or partial (1-9 hours).',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Leave request submitted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        employeeId: { type: 'string' },
+        date: { type: 'string', format: 'date' },
+        hours: { type: 'number' },
+        status: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
+        reason: { type: 'string', nullable: true },
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid hours, date in past, or leave/attendance already exists for this date' })
+  @ApiResponse({ status: 403, description: 'Employee access required' })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  async requestLeave(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: { date: string; hours: number; reason?: string },
+  ) {
+    const employee = await this.employeesService.findByUserId(user.userId);
+    return this.attendanceService.requestLeave(
+      employee.id,
+      new Date(body.date),
+      body.hours,
+      body.reason,
+    );
+  }
+
+  @Get('leave-requests')
+  @UseGuards(EmployeeGuard)
+  @ApiOperation({
+    summary: 'Get user leave requests (Employee only)',
+    description: 'Retrieves the authenticated employee\'s leave requests. Can be filtered by month and year.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Leave requests retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          date: { type: 'string', format: 'date' },
+          hours: { type: 'number' },
+          status: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
+          reason: { type: 'string', nullable: true },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Employee access required' })
+  @ApiQuery({
+    name: 'month',
+    required: false,
+    type: Number,
+    description: 'Month number (1-12). Must be used with year.',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'year',
+    required: false,
+    type: Number,
+    description: 'Year (e.g., 2024). Must be used with month.',
+    example: 2024,
+  })
+  async getMyLeaveRequests(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('month') month?: number,
+    @Query('year') year?: number,
+  ) {
+    const employee = await this.employeesService.findByUserId(user.userId);
+    return this.attendanceService.getMyLeaveRequests(employee.id, month, year);
   }
 }
 

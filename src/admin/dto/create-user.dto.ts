@@ -37,9 +37,13 @@ export class CreateUserDto {
   @IsString()
   designation?: string;
 
-  @ApiPropertyOptional({ example: 1000, description: 'Daily salary (required for employees)' })
+  @ApiPropertyOptional({ example: 1000, description: 'Daily salary (required for employees, deprecated - use monthlySalary)' })
   @IsOptional()
   dailySalary?: number;
+
+  @ApiPropertyOptional({ example: 22000, description: 'Monthly salary (required for employees)' })
+  @IsOptional()
+  monthlySalary?: number;
 
   @ApiPropertyOptional({ example: '2024-01-01', description: 'Joining date (required for employees, YYYY-MM-DD)' })
   @IsOptional()

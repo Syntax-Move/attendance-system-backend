@@ -15,7 +15,8 @@ import { Attendance } from './attendance.model';
 
 @Table({
   tableName: 'salary_deduction_ledgers',
-  timestamps: false,
+  timestamps: true,
+  updatedAt: false, // Only createdAt, no updatedAt
 })
 export class SalaryDeductionLedger extends Model<SalaryDeductionLedger> {
   @PrimaryKey

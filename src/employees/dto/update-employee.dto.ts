@@ -37,5 +37,14 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ 
+    example: 'full-time', 
+    description: 'Employee status',
+    enum: ['full-time', 'probation', 'notice-period']
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
 }
 

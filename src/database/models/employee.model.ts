@@ -16,6 +16,7 @@ import { User } from './user.model';
 import { Attendance } from './attendance.model';
 import { MonthlyAttendanceSummary } from './monthly-attendance-summary.model';
 import { SalaryDeductionLedger } from './salary-deduction-ledger.model';
+import { LeaveRequest } from './leave-request.model';
 
 @Table({
   tableName: 'employees',
@@ -69,11 +70,24 @@ export class Employee extends Model<Employee> {
   })
   declare joiningDate: Date;
 
+  @Column({
+    type: DataType.ENUM('full-time', 'probation', 'notice-period'),
+    allowNull: false,
+    defaultValue: 'full-time',
+  })
+  declare status: string;
+
   @CreatedAt
   declare createdAt: Date;
 
   @UpdatedAt
   declare updatedAt: Date;
+
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  declare deletedAt: Date | null;
 
   @BelongsTo(() => User, { foreignKey: 'userId', as: 'user' })
   user: User;
@@ -95,5 +109,11 @@ export class Employee extends Model<Employee> {
     onUpdate: 'CASCADE',
   })
   deductionLedgers: SalaryDeductionLedger[];
+
+  @HasMany(() => LeaveRequest, {
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE',
+  })
+  leaveRequests: LeaveRequest[];
 }
 

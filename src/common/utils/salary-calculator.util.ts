@@ -1,3 +1,6 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
 export interface SalaryCalculationResult {
   totalWorkedMinutes: number;
   shortMinutes: number;
@@ -7,18 +10,30 @@ export interface SalaryCalculationResult {
   deductedAmount: number;
 }
 
+@Injectable()
 export class SalaryCalculator {
   private static readonly REQUIRED_MINUTES_PER_DAY = 9 * 60; // 9 hours
-  private static readonly ALLOWED_SHORT_MINUTES_PER_MONTH = 6 * 60; // 6 hours
+  private readonly allowedShortMinutesPerMonth: number;
+
+  constructor(private configService: ConfigService) {
+    // Get from env, default to 10 hours (600 minutes)
+    // Note: User mentioned 15 hours, but explicitly said "if not env then 10 hours in minutes by default"
+    const envValue = this.configService.get<string>('MONTHLY_SHORT_MINUTES_ALLOWED');
+    this.allowedShortMinutesPerMonth = envValue 
+      ? parseInt(envValue, 10) 
+      : 10 * 60; // Default: 10 hours = 600 minutes
+  }
 
   /**
    * Calculate salary for a checkout
+   * Now considers leave balance when calculating deductions
    */
-  static calculateSalary(
+  calculateSalary(
     checkInTime: Date,
     checkOutTime: Date,
     dailySalary: number,
     monthlyShortMinutesSoFar: number,
+    availableLeaveBalance: number = 0, // Available leave balance in minutes
   ): SalaryCalculationResult {
     // Calculate worked minutes
     const totalWorkedMinutes = Math.floor(
@@ -28,20 +43,27 @@ export class SalaryCalculator {
     // Calculate short minutes (if worked less than required)
     const shortMinutes = Math.max(
       0,
-      this.REQUIRED_MINUTES_PER_DAY - totalWorkedMinutes,
+      SalaryCalculator.REQUIRED_MINUTES_PER_DAY - totalWorkedMinutes,
     );
 
     // Total short minutes for the month including today
     const monthlyShortMinutes = monthlyShortMinutesSoFar + shortMinutes;
 
-    // Calculate deduction minutes (only if exceeds allowance)
+    // Calculate deduction minutes considering leave balance
+    // First, try to cover short minutes with leave balance
+    const shortMinutesAfterLeave = Math.max(
+      0,
+      monthlyShortMinutes - availableLeaveBalance,
+    );
+
+    // Then calculate deduction minutes (only if exceeds allowance after using leave)
     const deductionMinutes = Math.max(
       0,
-      monthlyShortMinutes - this.ALLOWED_SHORT_MINUTES_PER_MONTH,
+      shortMinutesAfterLeave - this.allowedShortMinutesPerMonth,
     );
 
     // Calculate per-minute salary rate
-    const perMinuteSalary = dailySalary / this.REQUIRED_MINUTES_PER_DAY;
+    const perMinuteSalary = dailySalary / SalaryCalculator.REQUIRED_MINUTES_PER_DAY;
 
     // Calculate deducted amount
     const deductedAmount = deductionMinutes * perMinuteSalary;
@@ -62,15 +84,15 @@ export class SalaryCalculator {
   /**
    * Get required minutes per day
    */
-  static getRequiredMinutesPerDay(): number {
-    return this.REQUIRED_MINUTES_PER_DAY;
+  getRequiredMinutesPerDay(): number {
+    return SalaryCalculator.REQUIRED_MINUTES_PER_DAY;
   }
 
   /**
    * Get allowed short minutes per month
    */
-  static getAllowedShortMinutesPerMonth(): number {
-    return this.ALLOWED_SHORT_MINUTES_PER_MONTH;
+  getAllowedShortMinutesPerMonth(): number {
+    return this.allowedShortMinutesPerMonth;
   }
 }
 

@@ -21,15 +21,20 @@ export class AuthService {
 
   async login(loginDto: LoginDto): Promise<LoginResponseDto> {
     const user = await this.userModel.findOne({
-      where: { email: loginDto.email },
+      where: { 
+        email: loginDto.email,
+        deletedAt: null, // Exclude deleted users
+      },
     });
-    console.log(user?.isActive);
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
     if (!user.isActive) {
       throw new UnauthorizedException('Account is inactive');
+    }
+    if (user.deletedAt) {
+      throw new UnauthorizedException('Account has been deleted');
     }
 
 
@@ -60,13 +65,22 @@ export class AuthService {
   }
 
   async validateUser(userId: string): Promise<User> {
-    const user = await this.userModel.findByPk(userId);
+    const user = await this.userModel.findOne({
+      where: {
+        id: userId,
+        deletedAt: null, // Exclude deleted users
+      },
+    });
     if (!user) {
       throw new UnauthorizedException('User not found or inactive');
     }
     
     if (!user.isActive) {
       throw new UnauthorizedException('User not found or inactive');
+    }
+    
+    if (user.deletedAt) {
+      throw new UnauthorizedException('User account has been deleted');
     }
     return user;
   }
