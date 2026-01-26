@@ -25,8 +25,35 @@ CREATE DATABASE attendance_system;
 
 ### 3. Environment Configuration
 
-Create a `.env` file in the `attendance-system-backend` directory:
+The application supports environment-specific configuration files. The system automatically loads the appropriate file based on `NODE_ENV`:
 
+**Environment File Priority:**
+1. `.env.${NODE_ENV}.local` (e.g., `.env.development.local`)
+2. `.env.${NODE_ENV}` (e.g., `.env.development`)
+3. `.env.local`
+4. `.env` (fallback)
+
+**Setup Steps:**
+
+1. **For Development** (default):
+   ```bash
+   cp .env.development.example .env.development
+   ```
+   Then edit `.env.development` with your local database credentials.
+
+2. **For Production**:
+   ```bash
+   cp .env.production.example .env.production
+   ```
+   Then edit `.env.production` with your production database credentials.
+
+3. **For Testing**:
+   ```bash
+   cp .env.test.example .env.test
+   ```
+   Then edit `.env.test` with your test database credentials.
+
+**Example `.env.development` file:**
 ```env
 # Database Configuration
 DB_HOST=localhost
@@ -55,8 +82,10 @@ ADMIN_PASSWORD=admin123
 ```
 
 **Important**: 
-- Change `JWT_SECRET` to a strong, random string in production!
+- Never commit `.env`, `.env.development`, `.env.production`, or `.env.test` files to version control!
+- Change `JWT_SECRET` to a strong, random string in production (minimum 32 characters)!
 - Change `ADMIN_EMAIL` and `ADMIN_PASSWORD` in production!
+- Use different database credentials for each environment!
 
 ### 4. Run the Application
 

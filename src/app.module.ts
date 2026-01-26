@@ -17,6 +17,12 @@ import jwtConfig from './config/jwt.config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [
+        `.env.${process.env.NODE_ENV || 'development'}.local`,
+        `.env.${process.env.NODE_ENV || 'development'}`,
+        '.env.local',
+        '.env',
+      ],
       load: [databaseConfig, jwtConfig],
     }),
     ScheduleModule.forRoot(),

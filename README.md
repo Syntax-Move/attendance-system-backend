@@ -31,7 +31,17 @@ A comprehensive NestJS backend for an employee attendance and salary management 
 npm install
 ```
 
-2. Create a `.env` file in the root directory:
+2. Create environment configuration files:
+
+The application supports environment-specific configuration files. See [ENV_SETUP.md](./ENV_SETUP.md) for detailed instructions.
+
+**Quick Start:**
+```bash
+# Create development environment file
+# Copy the template below to .env.development
+```
+
+**Example `.env.development` file:**
 ```env
 # Database Configuration
 DB_HOST=localhost
@@ -56,6 +66,8 @@ NODE_ENV=development
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=admin123
 ```
+
+**For production and other environments, see [ENV_SETUP.md](./ENV_SETUP.md)**
 
 3. Create the PostgreSQL database:
 ```sql
