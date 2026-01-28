@@ -48,14 +48,14 @@ jobs:
           npm run build
 
           # 6) Verify build output exists
-          if [ ! -f "dist/main.js" ]; then
-            echo "Error: dist/main.js not found after build!"
-            ls -la dist/ || echo "dist directory does not exist"
+          if [ ! -f "dist/src/main.js" ]; then
+            echo "Error: dist/src/main.js not found after build!"
+            ls -la dist/ dist/src/ 2>/dev/null || echo "dist directory does not exist"
             exit 1
           fi
 
           # 7) Get absolute path for PM2
-          APP_PATH=$(pwd)/dist/main.js
+          APP_PATH=$(pwd)/dist/src/main.js
           echo "Starting PM2 with path: $APP_PATH"
 
           # 8) Restart with PM2 (use unique names per env)
