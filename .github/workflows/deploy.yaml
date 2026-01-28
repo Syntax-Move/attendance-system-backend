@@ -1,0 +1,68 @@
+name: Deploy to VPS
+
+# Trigger on pushes to dev, stg, and main branches
+on:
+  push:
+    branches:
+      - dev
+      - stg
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout your code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Step 2: Deploy using SSH
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22
+        script: |
+          # 1) Load NVM if Node was installed via NVM (so npm and pm2 can run)
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+          # 2) Go to your app directory
+          cd ${{ secrets.APP_DIR }}
+
+          echo "Deploying branch: ${{ github.ref_name }}"
+
+          # 3) Pull the latest code for this branch
+          git fetch --all
+          git checkout ${{ github.ref_name }}
+          git pull origin ${{ github.ref_name }}
+
+          # 4) Install dependencies
+          npm install
+
+          # 5) Build the app
+          npm run build
+
+          # 6) Verify build output exists
+          if [ ! -f "dist/src/main.js" ]; then
+            echo "Error: dist/src/main.js not found after build!"
+            ls -la dist/ dist/src/ 2>/dev/null || echo "dist directory does not exist"
+            exit 1
+          fi
+
+          # 7) Get absolute path for PM2
+          APP_PATH=$(pwd)/dist/src/main.js
+          echo "Starting PM2 with path: $APP_PATH"
+
+          # 8) Restart with PM2 (use unique names per env)
+          if [ "${{ github.ref_name }}" = "dev" ]; then
+            pm2 restart attendance-dev || pm2 start $APP_PATH --name attendance-dev
+          elif [ "${{ github.ref_name }}" = "stg" ]; then
+            pm2 restart attendance-stg || pm2 start $APP_PATH --name attendance-stg
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            pm2 restart attendance-prod || pm2 start $APP_PATH --name attendance-prod
+          fi
