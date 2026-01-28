@@ -1,0 +1,40 @@
+name: CI/CD Deployment
+
+on:
+  push:
+    branches:
+      - dev
+      - stg
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to VPS
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22
+        script: |
+          cd ${{ secrets.APP_DIR }}
+
+          echo "Pulling latest code"
+          git fetch --all
+          git checkout ${{ github.ref_name }}
+          git pull origin ${{ github.ref_name }}
+
+          echo "Installing deps"
+          npm install
+
+          echo "Building"
+          npm run build
+
+          echo "Restarting app"
+          pm2 restart attendance-${{ github.ref_name }} || pm2 start dist/main.js --name attendance-${{ github.ref_name }}
