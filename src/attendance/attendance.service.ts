@@ -17,8 +17,8 @@ import { LeaveBalance } from '../database/models/leave-balance.model';
 import { PublicHoliday } from '../database/models/public-holiday.model';
 import { SalaryCalculator } from '../common/utils/salary-calculator.util';
 import { LeaveBalanceUtil } from '../common/utils/leave-balance.util';
+import { AttendanceRulesUtil } from '../common/utils/attendance-rules.util';
 import { WorkingDaysUtil } from '../common/utils/working-days.util';
-import { Inject } from '@nestjs/common';
 import { QRCodeValidator } from '../common/utils/qr-code-validator.util';
 import { CheckInResponseDto } from './dto/check-in-response.dto';
 import { CheckOutResponseDto } from './dto/check-out-response.dto';
@@ -46,6 +46,7 @@ export class AttendanceService {
     private sequelize: Sequelize,
     private salaryCalculator: SalaryCalculator,
     private leaveBalanceUtil: LeaveBalanceUtil,
+    private attendanceRules: AttendanceRulesUtil,
   ) {}
 
   async checkIn(
@@ -108,6 +109,9 @@ export class AttendanceService {
       },
     });
 
+    const isLate = this.attendanceRules.isLate(checkInDateTime, today);
+    const isHalfDay = this.attendanceRules.isHalfDay(checkInDateTime, today);
+
     let attendance;
     if (existingAttendance) {
       // If record exists but is inactive, activate it and add check-in
@@ -115,24 +119,28 @@ export class AttendanceService {
         await existingAttendance.update({
           isActive: true,
           checkInTime: checkInDateTime,
+          isLate,
+          isHalfDay,
         });
         attendance = existingAttendance;
       } else if (existingAttendance.checkInTime) {
         throw new BadRequestException('Already checked in today');
       } else {
-        // Active record but no check-in, update it
         await existingAttendance.update({
           checkInTime: checkInDateTime,
+          isLate,
+          isHalfDay,
         });
         attendance = existingAttendance;
       }
     } else {
-      // Create new check-in record (active)
       attendance = await this.attendanceModel.create({
         employeeId,
         date: today,
         checkInTime: checkInDateTime,
         isActive: true,
+        isLate,
+        isHalfDay,
       } as any);
     }
 
@@ -241,10 +249,15 @@ export class AttendanceService {
         employee.joiningDate,
       );
 
-      // Calculate salary (considering leave balance)
+      const attendanceDate = new Date(attendance.date);
+      const isHalfDay = (attendance as any).isHalfDay ?? this.attendanceRules.isHalfDay(checkInTime, attendanceDate);
+
+      // Calculate salary using working window [m, m+9h] and half-day rule
       const calculation = this.salaryCalculator.calculateSalary(
         checkInTime,
         checkOutTime,
+        attendanceDate,
+        isHalfDay,
         parseFloat(employee.dailySalary.toString()),
         monthlyShortMinutes,
         leaveBalance.availableMinutes,
@@ -553,6 +566,219 @@ export class AttendanceService {
       },
       { transaction },
     );
+  }
+
+  /**
+   * Admin: Create attendance for any employee and date with any check-in/check-out times.
+   */
+  async createAttendanceByAdmin(
+    employeeId: string,
+    date: string,
+    checkInTime: Date,
+    checkOutTime: Date,
+  ): Promise<any> {
+    const employee = await this.employeeModel.findByPk(employeeId);
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+    if (checkOutTime <= checkInTime) {
+      throw new BadRequestException('Check-out time must be after check-in time');
+    }
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+
+    const existing = await this.attendanceModel.findOne({
+      where: { employeeId, date: dateOnly, deletedAt: null },
+    });
+    if (existing) {
+      throw new BadRequestException('Attendance already exists for this employee and date. Use update instead.');
+    }
+
+    const isLate = this.attendanceRules.isLate(checkInTime, dateOnly);
+    const isHalfDay = this.attendanceRules.isHalfDay(checkInTime, dateOnly);
+
+    const transaction = await this.sequelize.transaction();
+    try {
+      const attendance = await this.attendanceModel.create(
+        {
+          employeeId,
+          date: dateOnly,
+          checkInTime,
+          checkOutTime,
+          isActive: true,
+          isLate,
+          isHalfDay,
+        } as any,
+        { transaction },
+      );
+
+      const month = dateOnly.getMonth() + 1;
+      const year = dateOnly.getFullYear();
+      const monthlyShortMinutes = await this.getMonthlyShortMinutes(
+        employeeId,
+        month,
+        year,
+        attendance.id,
+        transaction,
+      );
+      const leaveBalance = await this.leaveBalanceUtil.getCurrentBalance(
+        employeeId,
+        month,
+        year,
+        employee.joiningDate,
+      );
+      const calculation = this.salaryCalculator.calculateSalary(
+        checkInTime,
+        checkOutTime,
+        dateOnly,
+        isHalfDay,
+        parseFloat(employee.dailySalary.toString()),
+        monthlyShortMinutes,
+        leaveBalance.availableMinutes,
+      );
+
+      if (calculation.shortMinutes > 0 && leaveBalance.availableMinutes > 0) {
+        const minutesToUtilize = Math.min(calculation.shortMinutes, leaveBalance.availableMinutes);
+        await this.leaveBalanceUtil.utilizeLeave(employeeId, month, year, minutesToUtilize);
+      }
+
+      await attendance.update(
+        {
+          totalWorkedMinutes: calculation.totalWorkedMinutes,
+          shortMinutes: calculation.shortMinutes,
+          salaryEarned: calculation.salaryEarned,
+        },
+        { transaction },
+      );
+
+      if (calculation.deductionMinutes > 0) {
+        await this.deductionLedgerModel.create(
+          {
+            employeeId,
+            attendanceId: attendance.id,
+            deductedMinutes: calculation.deductionMinutes,
+            deductedAmount: calculation.deductedAmount,
+            reason: `Short hours deduction for ${date}`,
+          } as any,
+          { transaction },
+        );
+      }
+
+      await this.updateMonthlySummary(employeeId, month, year, calculation, transaction);
+      await transaction.commit();
+
+      const saved = await this.attendanceModel.findByPk(attendance.id, {
+        include: [{ model: Employee, attributes: ['id', 'fullName', 'designation'] }],
+      });
+      return saved?.get({ plain: true });
+    } catch (e) {
+      await transaction.rollback();
+      throw e;
+    }
+  }
+
+  /**
+   * Admin: Update check-in/check-out of any attendance. Recomputes late, half-day, and salary.
+   */
+  async updateAttendanceByAdmin(
+    id: string,
+    body: { checkInTime?: Date; checkOutTime?: Date },
+  ): Promise<any> {
+    const attendance = await this.attendanceModel.findOne({
+      where: { id, deletedAt: null },
+      include: [{ model: Employee }],
+    });
+    if (!attendance) {
+      throw new NotFoundException('Attendance record not found');
+    }
+
+    const checkInTime = body.checkInTime ?? attendance.checkInTime;
+    const checkOutTime = body.checkOutTime ?? attendance.checkOutTime;
+    if (!checkInTime || !checkOutTime) {
+      throw new BadRequestException('Both check-in and check-out are required to recalculate salary.');
+    }
+    if (checkOutTime <= checkInTime) {
+      throw new BadRequestException('Check-out time must be after check-in time');
+    }
+
+    const dateOnly = new Date(attendance.date);
+    dateOnly.setHours(0, 0, 0, 0);
+    const isLate = this.attendanceRules.isLate(checkInTime, dateOnly);
+    const isHalfDay = this.attendanceRules.isHalfDay(checkInTime, dateOnly);
+    const employeeId = attendance.employeeId;
+    const employee = attendance.get('employee') as Employee;
+    const month = dateOnly.getMonth() + 1;
+    const year = dateOnly.getFullYear();
+    console.log({employee, employeeId});
+    if(!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+    const transaction = await this.sequelize.transaction();
+    try {
+      const monthlyShortMinutes = await this.getMonthlyShortMinutes(
+        employeeId,
+        month,
+        year,
+        attendance.id,
+        transaction,
+      );
+      const leaveBalance = await this.leaveBalanceUtil.getCurrentBalance(
+        employeeId,
+        month,
+        year,
+        employee?.joiningDate,
+      );
+      const calculation = this.salaryCalculator.calculateSalary(
+        checkInTime,
+        checkOutTime,
+        dateOnly,
+        isHalfDay,
+        parseFloat(employee?.dailySalary?.toString()),
+        monthlyShortMinutes,
+        leaveBalance.availableMinutes,
+      );
+
+      await this.deductionLedgerModel.destroy({
+        where: { attendanceId: attendance.id },
+        transaction,
+      });
+      if (calculation.deductionMinutes > 0) {
+        await this.deductionLedgerModel.create(
+          {
+            employeeId,
+            attendanceId: attendance.id,
+            deductedMinutes: calculation.deductionMinutes,
+            deductedAmount: calculation.deductedAmount,
+            reason: `Short hours deduction for ${attendance.date}`,
+          } as any,
+          { transaction },
+        );
+      }
+
+      await attendance.update(
+        {
+          checkInTime,
+          checkOutTime,
+          isLate,
+          isHalfDay,
+          totalWorkedMinutes: calculation.totalWorkedMinutes,
+          shortMinutes: calculation.shortMinutes,
+          salaryEarned: calculation.salaryEarned,
+        },
+        { transaction },
+      );
+
+      await this.recalculateMonthlySummary(employeeId, month, year, transaction);
+      await transaction.commit();
+
+      const updated = await this.attendanceModel.findByPk(id, {
+        include: [{ model: Employee, attributes: ['id', 'fullName', 'designation'] }],
+      });
+      return updated?.get({ plain: true });
+    } catch (e) {
+      await transaction.rollback();
+      throw e;
+    }
   }
 
   async deleteAttendanceById(id: string): Promise<{ message: string }> {
@@ -926,13 +1152,18 @@ export class AttendanceService {
           availableHours: leaveBalance.availableMinutes / 60,
           carryoverHours: leaveBalance.carryoverMinutes / 60,
         },
-        leaveRequests: leaveRequests.map((lr) => ({
-          id: lr.id,
-          date: lr.date,
-          hours: lr.hours,
-          status: lr.status,
-          reason: lr.reason,
-        })),
+        leaveRequests: leaveRequests.map((lr) => {
+          const days = lr.days != null ? parseFloat(lr.days.toString()) : (lr.hours || 0) / 9;
+          return {
+            id: lr.id,
+            date: lr.date,
+            days,
+            hours: Math.round(days * 9),
+            unpaidDays: lr.unpaidDays != null ? parseFloat(lr.unpaidDays.toString()) : 0,
+            status: lr.status,
+            reason: lr.reason,
+          };
+        }),
       },
       totalSalary: totalSalary,
     };
@@ -1134,25 +1365,35 @@ export class AttendanceService {
     }
   }
 
+  /** Leave in multiples of 0.5 day; 1 day = 9 hours = 540 minutes */
+  private static readonly MINUTES_PER_LEAVE_DAY = 9 * 60;
+
   /**
-   * Request leave for a specific day
+   * Request leave for a specific day. Leave is in days: 0.5, 1, 1.5, 2, ...
+   * Also accepts legacy hours (converted to days = hours/9).
    */
   async requestLeave(
     employeeId: string,
     date: Date,
-    hours: number,
+    daysOrHours: number,
     reason?: string,
+    useDays: boolean = true,
   ): Promise<any> {
-    // Validate employee exists
     const employee = await this.employeeModel.findByPk(employeeId);
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
 
-    // Validate hours (1-9)
-    if (hours < 1 || hours > 9) {
-      throw new BadRequestException('Hours must be between 1 and 9');
+    const days = useDays
+      ? daysOrHours
+      : Math.round((daysOrHours / 9) * 100) / 100;
+    if (days <= 0 || days > 31) {
+      throw new BadRequestException('Leave must be between 0.5 and 31 days');
     }
+    if (!Number.isInteger(days * 2) || days < 0.5) {
+      throw new BadRequestException('Leave must be in multiples of 0.5 day (e.g. 0.5, 1, 1.5, 2)');
+    }
+    const requestedMinutes = Math.round(days * AttendanceService.MINUTES_PER_LEAVE_DAY);
 
     // Validate date is today or future
     const today = new Date();
@@ -1218,103 +1459,44 @@ export class AttendanceService {
       },
     });
 
-    // Calculate total hours already requested/approved for this month
     const pendingRequests = monthLeaveRequests.filter((lr) => lr.status === 'pending');
     const approvedRequests = monthLeaveRequests.filter((lr) => lr.status === 'approved');
 
-    const totalPendingHours = pendingRequests.reduce((sum, lr) => sum + lr.hours, 0);
-    const totalApprovedHours = approvedRequests.reduce((sum, lr) => sum + lr.hours, 0);
-    const totalApprovedPaidHours = approvedRequests.reduce(
-      (sum, lr) => sum + (lr.hours - (lr.unpaidHours || 0)),
-      0,
-    );
-    const totalApprovedUnpaidHours = approvedRequests.reduce(
-      (sum, lr) => sum + (lr.unpaidHours || 0),
-      0,
-    );
+    const getMinutes = (lr: any) => {
+      const d = lr.days != null ? parseFloat(lr.days) : (lr.hours || 0) / 9;
+      return Math.round(d * AttendanceService.MINUTES_PER_LEAVE_DAY);
+    };
+    const totalPendingMinutes = pendingRequests.reduce((sum, lr) => sum + getMinutes(lr), 0);
+    const totalApprovedMinutes = approvedRequests.reduce((sum, lr) => sum + getMinutes(lr), 0);
+    const availableBalanceMinutes = targetBalance.availableMinutes;
 
-    // Calculate available balance
-    // Note: availableBalanceHours already accounts for utilized minutes from approved requests
-    const availableBalanceHours = targetBalance.availableMinutes / 60;
-
-    // Calculate for current request
-    const requestedHours = hours;
-    const totalPendingWithCurrent = totalPendingHours + requestedHours;
-    const totalRequestedHours = totalPendingWithCurrent + totalApprovedHours;
-
-    // Calculate paid vs unpaid for current request
-    // This is based on remaining balance after approved requests (which is already in availableBalanceHours)
-    let paidHoursForCurrent = 0;
-    let unpaidHoursForCurrent = 0;
-
-    if (availableBalanceHours >= requestedHours) {
-      // Sufficient balance for current request
-      paidHoursForCurrent = requestedHours;
-      unpaidHoursForCurrent = 0;
+    let paidMinutesForCurrent = 0;
+    let unpaidMinutesForCurrent = 0;
+    if (availableBalanceMinutes >= requestedMinutes) {
+      paidMinutesForCurrent = requestedMinutes;
+      unpaidMinutesForCurrent = 0;
     } else {
-      // Insufficient balance
-      paidHoursForCurrent = Math.max(0, availableBalanceHours);
-      unpaidHoursForCurrent = requestedHours - paidHoursForCurrent;
+      paidMinutesForCurrent = Math.max(0, availableBalanceMinutes);
+      unpaidMinutesForCurrent = requestedMinutes - paidMinutesForCurrent;
     }
+    const unpaidDaysForCurrent = Math.round((unpaidMinutesForCurrent / AttendanceService.MINUTES_PER_LEAVE_DAY) * 100) / 100;
+    const availableBalanceDays = availableBalanceMinutes / AttendanceService.MINUTES_PER_LEAVE_DAY;
 
-    // Build detailed message
     let message = 'Leave request submitted successfully. ';
-
     if (isNextMonth) {
       message += `This is for next month (${leaveMonth}/${leaveYear}), which will be calculated as a fresh month. `;
     }
-
-    // Scenario 1: Single request with sufficient balance
-    if (pendingRequests.length === 0 && approvedRequests.length === 0) {
-      if (paidHoursForCurrent === requestedHours) {
-        message += `${requestedHours} hours will be deducted from your ${availableBalanceHours.toFixed(1)} hours leave balance.`;
-      } else {
-        message += `${paidHoursForCurrent.toFixed(1)} hours will be deducted from your ${availableBalanceHours.toFixed(1)} hours leave balance, and ${unpaidHoursForCurrent.toFixed(1)} hours will be marked as unpaid leave.`;
-      }
-    }
-    // Scenario 2: Has pending requests (not yet approved)
-    else if (pendingRequests.length > 0 && approvedRequests.length === 0) {
-      const totalPendingHoursWithCurrent = totalPendingHours + requestedHours;
-      message += `You have ${totalPendingHoursWithCurrent} hours of leave requests pending for this month. `;
-      
-      if (availableBalanceHours >= totalPendingHoursWithCurrent) {
-        message += `If all requests are approved, ${totalPendingHoursWithCurrent} hours will be deducted from your ${availableBalanceHours.toFixed(1)} hours leave balance.`;
-      } else {
-        const totalPaid = availableBalanceHours;
-        const totalUnpaid = totalPendingHoursWithCurrent - availableBalanceHours;
-        message += `If all requests are approved, ${totalPaid.toFixed(1)} hours will be deducted from your ${availableBalanceHours.toFixed(1)} hours leave balance, and ${totalUnpaid.toFixed(1)} hours will be marked as unpaid leave.`;
-      }
-    }
-    // Scenario 3: Has approved requests
-    else if (approvedRequests.length > 0) {
-      // availableBalanceHours already reflects remaining balance after approved requests
-      const remainingBalance = availableBalanceHours;
-      message += `You have ${totalApprovedHours} hours of approved leave (${totalApprovedPaidHours.toFixed(1)} hours paid, ${totalApprovedUnpaidHours.toFixed(1)} hours unpaid). `;
-      
-      if (pendingRequests.length === 0) {
-        // Only approved, adding new request
-        if (paidHoursForCurrent === requestedHours) {
-          message += `This request will deduct ${requestedHours} hours from your remaining ${remainingBalance.toFixed(1)} hours leave balance.`;
-        } else {
-          message += `This request will deduct ${paidHoursForCurrent.toFixed(1)} hours from your remaining ${remainingBalance.toFixed(1)} hours leave balance, and ${unpaidHoursForCurrent.toFixed(1)} hours will be marked as unpaid leave.`;
-        }
-      } else {
-        // Has both approved and pending
-        const totalPendingWithCurrent = totalPendingHours + requestedHours;
-        const totalAfterAll = totalApprovedHours + totalPendingWithCurrent;
-        const totalPaidAfterAll = totalApprovedPaidHours + Math.min(remainingBalance, totalPendingWithCurrent);
-        const totalUnpaidAfterAll = totalApprovedUnpaidHours + Math.max(0, totalPendingWithCurrent - remainingBalance);
-        
-        message += `You have ${totalPendingWithCurrent} hours of pending requests. `;
-        message += `If all pending requests are approved, you will have ${totalPaidAfterAll.toFixed(1)} hours of paid leave and ${totalUnpaidAfterAll.toFixed(1)} hours of unpaid leave for this month.`;
-      }
+    if (unpaidDaysForCurrent > 0) {
+      message += `${days} day(s) requested; ${paidMinutesForCurrent / AttendanceService.MINUTES_PER_LEAVE_DAY} day(s) from balance, ${unpaidDaysForCurrent} day(s) will be deducted from salary if approved.`;
+    } else {
+      message += `${days} day(s) will be deducted from your ${availableBalanceDays.toFixed(1)} days leave balance if approved.`;
     }
 
-    // Create leave request
     const leaveRequest = await this.leaveRequestModel.create({
       employeeId,
       date: leaveDate,
-      hours,
+      hours: Math.round(days * 9),
+      days,
       status: 'pending',
       reason: reason || null,
     } as any);
@@ -1323,20 +1505,17 @@ export class AttendanceService {
       id: leaveRequest.id,
       employeeId: leaveRequest.employeeId,
       date: leaveRequest.date,
-      hours: leaveRequest.hours,
+      days,
+      hours: Math.round(days * 9),
       status: leaveRequest.status,
       reason: leaveRequest.reason,
       message,
       breakdown: {
-        availableBalance: availableBalanceHours,
-        requestedHours: requestedHours,
-        paidHours: paidHoursForCurrent,
-        unpaidHours: unpaidHoursForCurrent,
-        pendingRequestsCount: pendingRequests.length + 1, // Including current
-        approvedRequestsCount: approvedRequests.length,
-        totalPendingHours: totalPendingWithCurrent,
-        totalApprovedHours: totalApprovedHours,
-        isNextMonth: isNextMonth,
+        availableBalanceDays,
+        requestedDays: days,
+        paidDays: paidMinutesForCurrent / AttendanceService.MINUTES_PER_LEAVE_DAY,
+        unpaidDays: unpaidDaysForCurrent,
+        isNextMonth,
       },
     };
   }
@@ -1360,14 +1539,20 @@ export class AttendanceService {
       order: [['date', 'DESC']],
     });
 
-    return leaveRequests.map((lr) => ({
-      id: lr.id,
-      date: lr.date,
-      hours: lr.hours,
-      unpaidHours: lr.unpaidHours || 0,
-      status: lr.status,
-      reason: lr.reason,
-      createdAt: lr.createdAt,
-    }));
+    return leaveRequests.map((lr) => {
+      const days = lr.days != null ? parseFloat(lr.days.toString()) : (lr.hours || 0) / 9;
+      const unpaidDays = lr.unpaidDays != null ? parseFloat(lr.unpaidDays.toString()) : (lr.unpaidHours || 0) / 9;
+      return {
+        id: lr.id,
+        date: lr.date,
+        days,
+        hours: Math.round(days * 9),
+        unpaidDays,
+        unpaidHours: Math.round(unpaidDays * 9),
+        status: lr.status,
+        reason: lr.reason,
+        createdAt: lr.createdAt,
+      };
+    });
   }
 }

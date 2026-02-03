@@ -10,12 +10,12 @@ import { PublicHoliday } from '../database/models/public-holiday.model';
 import { WorkingDaysUtil } from '../common/utils/working-days.util';
 import { SalaryCalculator } from '../common/utils/salary-calculator.util';
 import { LeaveBalanceUtil } from '../common/utils/leave-balance.util';
+import { AttendanceRulesUtil } from '../common/utils/attendance-rules.util';
 import { MonthlyAttendanceSummary } from '../database/models/monthly-attendance-summary.model';
 
 @Injectable()
 export class AttendanceCronService {
   private readonly logger = new Logger(AttendanceCronService.name);
-  private readonly REQUIRED_MINUTES_PER_DAY = 9 * 60; // 9 hours = 540 minutes
 
   constructor(
     @InjectModel(Attendance)
@@ -29,6 +29,7 @@ export class AttendanceCronService {
     private sequelize: Sequelize,
     private salaryCalculator: SalaryCalculator,
     private leaveBalanceUtil: LeaveBalanceUtil,
+    private attendanceRules: AttendanceRulesUtil,
   ) {}
 
   /**
@@ -106,20 +107,24 @@ export class AttendanceCronService {
               employee.joiningDate,
             );
 
-            // Calculate salary (checkInTime cannot be null here since we checked for it)
             if (!checkInTime) {
               throw new Error('Check-in time is null');
             }
 
+            const attendanceDate = new Date(attendance.date);
+            const isLate = (attendance as any).isLate ?? this.attendanceRules.isLate(checkInTime, attendanceDate);
+            const isHalfDay = (attendance as any).isHalfDay ?? this.attendanceRules.isHalfDay(checkInTime, attendanceDate);
+
             const calculation = this.salaryCalculator.calculateSalary(
               checkInTime,
               checkOutTime,
+              attendanceDate,
+              isHalfDay,
               parseFloat(employee.dailySalary.toString()),
               monthlyShortMinutes,
               leaveBalance.availableMinutes,
             );
 
-            // If there are short minutes, try to utilize leave balance
             if (calculation.shortMinutes > 0 && leaveBalance.availableMinutes > 0) {
               const minutesToUtilize = Math.min(
                 calculation.shortMinutes,
@@ -133,7 +138,6 @@ export class AttendanceCronService {
               );
             }
 
-            // Update attendance record
             await attendance.update(
               {
                 checkOutTime: checkOutTime,
@@ -141,6 +145,8 @@ export class AttendanceCronService {
                 shortMinutes: calculation.shortMinutes,
                 salaryEarned: calculation.salaryEarned,
                 isActive: true,
+                isLate: (attendance as any).isLate ?? isLate,
+                isHalfDay: (attendance as any).isHalfDay ?? isHalfDay,
               },
               { transaction },
             );

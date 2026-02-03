@@ -8,6 +8,7 @@ import { DatabaseModule } from '../database/database.module';
 import { EmployeesModule } from '../employees/employees.module';
 import { SalaryCalculator } from '../common/utils/salary-calculator.util';
 import { LeaveBalanceUtil } from '../common/utils/leave-balance.util';
+import { AttendanceRulesUtil } from '../common/utils/attendance-rules.util';
 import { Attendance } from '../database/models/attendance.model';
 import { Employee } from '../database/models/employee.model';
 import { PublicHoliday } from '../database/models/public-holiday.model';
@@ -29,6 +30,7 @@ import { MonthlyAttendanceSummary } from '../database/models/monthly-attendance-
     AttendanceService,
     MissingAttendanceProcessorService,
     AttendanceCronService,
+    AttendanceRulesUtil,
     SalaryCalculator,
     LeaveBalanceUtil,
   ],

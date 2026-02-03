@@ -32,16 +32,17 @@ export class CreateEmployeesSeed implements OnModuleInit {
     try {
       // Check if all seed employees already exist
       const seedEmails = [
-        'john.doe@example.com',
-        'jane.smith@example.com',
-        'mike.johnson@example.com',
-        'sarah.williams@example.com',
-        'david.brown@example.com',
-        'emily.davis@example.com',
-        'robert.miller@example.com',
-        'lisa.wilson@example.com',
-        'james.moore@example.com',
-        'patricia.taylor@example.com',
+        'salmanashraf@syntaxmove.com',
+        'habibahmed@syntaxmove.com',
+        'abdullahawan@syntaxmove.com',
+        'harisali@syntaxmove.com',
+        'mahzaibkhan@syntaxmove.com',
+        'moazzamali@syntaxmove.com',
+        'ubaidmalik@syntaxmove.com',
+        'safiullahrafeeq@syntaxmove.com',
+        'toqeerahmed@syntaxmove.com',
+        'muhammadumer@syntaxmove.com',
+        'hammadaslam@syntaxmove.com',
       ];
 
       const existingUsers = await this.userModel.findAll({
@@ -63,135 +64,121 @@ export class CreateEmployeesSeed implements OnModuleInit {
         );
       }
 
-      // Get current date for varied joining dates
+      // Get current date for joining
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const threeDaysAgo = new Date(today);
-      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-
-      const fiveDaysAgo = new Date(today);
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-
-      const weekAgo = new Date(today);
-      weekAgo.setDate(weekAgo.getDate() - 7);
-
-      const twoWeeksAgo = new Date(today);
-      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-
-      const monthAgo = new Date(today);
-      monthAgo.setDate(monthAgo.getDate() - 30);
-
-      const twoMonthsAgo = new Date(today);
-      twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60);
-
-      // Employee data with varied joining dates and comprehensive information
+      // Employee data – all on probation, emails: firstname@syntaxmove.com
       const employeesData = [
         {
-          email: 'john.doe@example.com',
+          email: 'salmanashraf@syntaxmove.com',
           password: 'password123',
-          fullName: 'John Doe',
-          phone: '+1-555-0101',
-          designation: 'Senior Software Developer',
-          dailySalary: 1500.0, // Monthly: 33,000 (1500 × 22)
+          fullName: 'Salman Ashraf',
+          phone: '+92-300-0000001',
+          designation: 'Team Member',
+          dailySalary: 1500.0,
           joiningDate: today,
-          status: 'full-time',
+          status: 'probation',
         },
         {
-          email: 'jane.smith@example.com',
+          email: 'habibahmed@syntaxmove.com',
           password: 'password123',
-          fullName: 'Jane Smith',
-          phone: '+1-555-0102',
-          designation: 'Product Manager',
-          dailySalary: 2000.0, // Monthly: 44,000 (2000 × 22)
-          joiningDate: yesterday,
-          status: 'full-time',
-        },
-        {
-          email: 'mike.johnson@example.com',
-          password: 'password123',
-          fullName: 'Mike Johnson',
-          phone: '+1-555-0103',
+          fullName: 'Habib Ahmed',
+          phone: '+92-300-0000002',
           designation: 'UI/UX Designer',
-          dailySalary: 1200.0, // Monthly: 26,400 (1200 × 22)
-          joiningDate: tomorrow,
-          status: 'probation',
-        },
-        {
-          email: 'sarah.williams@example.com',
-          password: 'password123',
-          fullName: 'Sarah Williams',
-          phone: '+1-555-0104',
-          designation: 'Backend Developer',
-          dailySalary: 1400.0, // Monthly: 30,800 (1400 × 22)
-          joiningDate: threeDaysAgo,
-          status: 'full-time',
-        },
-        {
-          email: 'david.brown@example.com',
-          password: 'password123',
-          fullName: 'David Brown',
-          phone: '+1-555-0105',
-          designation: 'DevOps Engineer',
-          dailySalary: 1600.0, // Monthly: 35,200 (1600 × 22)
-          joiningDate: fiveDaysAgo,
-          status: 'full-time',
-        },
-        {
-          email: 'emily.davis@example.com',
-          password: 'password123',
-          fullName: 'Emily Davis',
-          phone: '+1-555-0106',
-          designation: 'QA Engineer',
-          dailySalary: 1100.0, // Monthly: 24,200 (1100 × 22)
-          joiningDate: weekAgo,
-          status: 'probation',
-        },
-        {
-          email: 'robert.miller@example.com',
-          password: 'password123',
-          fullName: 'Robert Miller',
-          phone: '+1-555-0107',
-          designation: 'Frontend Developer',
-          dailySalary: 1300.0, // Monthly: 28,600 (1300 × 22)
-          joiningDate: twoWeeksAgo,
-          status: 'full-time',
-        },
-        {
-          email: 'lisa.wilson@example.com',
-          password: 'password123',
-          fullName: 'Lisa Wilson',
-          phone: '+1-555-0108',
-          designation: 'Business Analyst',
-          dailySalary: 1800.0, // Monthly: 39,600 (1800 × 22)
-          joiningDate: monthAgo,
-          status: 'full-time',
-        },
-        {
-          email: 'james.moore@example.com',
-          password: 'password123',
-          fullName: 'James Moore',
-          phone: '+1-555-0109',
-          designation: 'Technical Lead',
-          dailySalary: 2500.0, // Monthly: 55,000 (2500 × 22)
-          joiningDate: twoMonthsAgo,
-          status: 'full-time',
-        },
-        {
-          email: 'patricia.taylor@example.com',
-          password: 'password123',
-          fullName: 'Patricia Taylor',
-          phone: '+1-555-0110',
-          designation: 'HR Manager',
-          dailySalary: 1700.0, // Monthly: 37,400 (1700 × 22)
+          dailySalary: 1500.0,
           joiningDate: today,
-          status: 'notice-period',
+          status: 'probation',
+        },
+        {
+          email: 'abdullahawan@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Abdullah Awan',
+          phone: '+92-300-0000003',
+          designation: 'WordPress Developer',
+          dailySalary: 1500.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'harisali@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Haris Ali',
+          phone: '+92-300-0000004',
+          designation: 'WordPress Developer',
+          dailySalary: 1500.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'mahzaibkhan@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Mahzaib Khan',
+          phone: '+92-300-0000005',
+          designation: 'WordPress Developer',
+          dailySalary: 1500.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'moazzamali@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Moazzam Ali',
+          phone: '+92-300-0000006',
+          designation: 'Graphics Designer',
+          dailySalary: 1500.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'ubaidmalik@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Ubaid Malik',
+          phone: '+92-300-0000007',
+          designation: 'Full Stack Developer',
+          dailySalary: 1800.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'safiullahrafeeq@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Safiullah Rafeeq',
+          phone: '+92-300-0000008',
+          designation: 'Full Stack Developer',
+          dailySalary: 1800.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'toqeerahmed@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Toqeer Ahmed',
+          phone: '+92-300-0000009',
+          designation: 'Floor Manager & QA Assistant',
+          dailySalary: 1500.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'muhammadumer@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Muhammad Umer',
+          phone: '+92-300-0000010',
+          designation: 'Jr. WordPress Developer',
+          dailySalary: 1200.0,
+          joiningDate: today,
+          status: 'probation',
+        },
+        {
+          email: 'hammadaslam@syntaxmove.com',
+          password: 'password123',
+          fullName: 'Hammad Aslam',
+          phone: '+92-300-0000011',
+          designation: 'UI/UX Designer',
+          dailySalary: 1500.0,
+          joiningDate: today,
+          status: 'probation',
         },
       ];
 
@@ -284,16 +271,10 @@ export class CreateEmployeesSeed implements OnModuleInit {
         `📊 Employee Summary:`,
       );
       this.logger.log(
-        `   - Full-time: ${employeesData.filter(e => e.status === 'full-time').length}`,
-      );
-      this.logger.log(
         `   - Probation: ${employeesData.filter(e => e.status === 'probation').length}`,
       );
       this.logger.log(
-        `   - Notice Period: ${employeesData.filter(e => e.status === 'notice-period').length}`,
-      );
-      this.logger.log(
-        `   - Salary Range: $${Math.min(...employeesData.map(e => e.dailySalary * 22)).toFixed(2)} - $${Math.max(...employeesData.map(e => e.dailySalary * 22)).toFixed(2)} per month`,
+        `   - Salary Range: Rs.${Math.min(...employeesData.map(e => e.dailySalary * 22)).toLocaleString()} - Rs.${Math.max(...employeesData.map(e => e.dailySalary * 22)).toLocaleString()} per month`,
       );
       this.logger.warn(
         `⚠️  All employees have default password: password123 - Change in production!`,

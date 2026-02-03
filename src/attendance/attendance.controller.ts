@@ -9,6 +9,7 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
@@ -428,14 +429,20 @@ export class AttendanceController {
   @ApiResponse({ status: 404, description: 'Employee not found' })
   async requestLeave(
     @CurrentUser() user: CurrentUserPayload,
-    @Body() body: { date: string; hours: number; reason?: string },
+    @Body() body: { date: string; days?: number; hours?: number; reason?: string },
   ) {
     const employee = await this.employeesService.findByUserId(user.userId);
+    const useDays = body.days != null;
+    const value = useDays ? body.days! : (body.hours ?? 0);
+    if (value <= 0) {
+      throw new BadRequestException('Provide either days (e.g. 0.5, 1, 1.5) or hours');
+    }
     return this.attendanceService.requestLeave(
       employee.id,
       new Date(body.date),
-      body.hours,
+      value,
       body.reason,
+      useDays,
     );
   }
 

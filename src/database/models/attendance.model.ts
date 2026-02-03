@@ -106,6 +106,22 @@ export class Attendance extends Model<Attendance> {
   })
   declare isActive: boolean;
 
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'True if check-in was more than n minutes after standard check-in (PKT)',
+  })
+  declare isLate: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'True if check-in was more than 1 hour after standard check-in (half day for salary)',
+  })
+  declare isHalfDay: boolean;
+
   @CreatedAt
   declare createdAt: Date;
 

@@ -277,10 +277,12 @@ export class AdminService {
         }
 
         // Calculate unpaid hours if request is pending and balance is insufficient
-        const requestedHours = lrPlain.hours;
-        const unpaidHours = lrPlain.status === 'pending' && availableBalance < requestedHours
-          ? Math.ceil((requestedHours * 60 - availableBalance * 60) / 60)
-          : (lrPlain.unpaidHours || 0);
+        const days = lrPlain.days != null ? parseFloat(lrPlain.days.toString()) : (lrPlain.hours || 0) / 9;
+        const requestedMinutes = Math.round(days * 9 * 60);
+        const availableBalanceMinutes = availableBalance * 60;
+        const unpaidDays = lrPlain.status === 'pending' && availableBalanceMinutes < requestedMinutes
+          ? Math.round((requestedMinutes - availableBalanceMinutes) / (9 * 60) * 100) / 100
+          : (lrPlain.unpaidDays != null ? parseFloat(lrPlain.unpaidDays.toString()) : (lrPlain.unpaidHours || 0) / 9);
 
         return {
           id: lrPlain.id,
@@ -299,9 +301,12 @@ export class AdminService {
                 designation: 'N/A',
               },
           date: lrPlain.date,
-          hours: lrPlain.hours,
+          days,
+          hours: Math.round(days * 9),
           availableBalance: parseFloat(availableBalance.toFixed(1)),
-          unpaidHours: unpaidHours,
+          availableBalanceDays: parseFloat((availableBalance / 9).toFixed(2)),
+          unpaidDays,
+          unpaidHours: Math.ceil(unpaidDays * 9),
           status: lrPlain.status,
           reason: lrPlain.reason,
           createdAt: lrPlain.createdAt,
@@ -333,7 +338,8 @@ export class AdminService {
     const leaveDate = new Date(leaveRequest.date);
     const month = leaveDate.getMonth() + 1;
     const year = leaveDate.getFullYear();
-    const leaveMinutes = leaveRequest.hours * 60;
+    const days = leaveRequest.days != null ? parseFloat(leaveRequest.days.toString()) : (leaveRequest.hours || 0) / 9;
+    const leaveMinutes = Math.round(days * 9 * 60);
 
     // Check if this is for next month
     const today = new Date();
@@ -378,19 +384,16 @@ export class AdminService {
 
       let paidMinutes = 0;
       let unpaidMinutes = 0;
-      let unpaidHours = 0;
+      let unpaidDays = 0;
 
-      // Calculate paid vs unpaid leave based on remaining balance
       if (remainingBalanceMinutes >= leaveMinutes) {
-        // Sufficient balance - use all from leave
         paidMinutes = leaveMinutes;
         unpaidMinutes = 0;
-        unpaidHours = 0;
+        unpaidDays = 0;
       } else {
-        // Insufficient balance - use available leave, rest is unpaid
         paidMinutes = Math.max(0, remainingBalanceMinutes);
         unpaidMinutes = leaveMinutes - paidMinutes;
-        unpaidHours = Math.ceil(unpaidMinutes / 60);
+        unpaidDays = Math.round((unpaidMinutes / (9 * 60)) * 100) / 100;
       }
 
       // Utilize leave balance (if any available)
@@ -407,9 +410,7 @@ export class AdminService {
         }
       }
 
-      // Create attendance record for unpaid leave (if any unpaid hours)
       if (unpaidMinutes > 0) {
-        // Check if attendance already exists
         const existingAttendance = await this.attendanceModel.findOne({
           where: {
             employeeId: leaveRequest.employeeId,
@@ -422,7 +423,6 @@ export class AdminService {
           throw new BadRequestException('Attendance record already exists for this date');
         }
 
-        // Create attendance record for unpaid leave
         await this.attendanceModel.create(
           {
             employeeId: leaveRequest.employeeId,
@@ -430,65 +430,49 @@ export class AdminService {
             checkInTime: undefined,
             checkOutTime: undefined,
             totalWorkedMinutes: 0,
-            shortMinutes: unpaidMinutes, // Full day short minutes for unpaid leave
-            salaryEarned: 0, // No salary for unpaid leave
-            unpaidLeave: true, // Mark as unpaid leave
+            shortMinutes: unpaidMinutes,
+            salaryEarned: 0,
+            unpaidLeave: true,
           } as any,
           { transaction },
         );
       }
 
-      // Update leave request with unpaid hours
       await leaveRequest.update(
         {
           status: LeaveStatus.APPROVED,
-          unpaidHours: unpaidHours,
+          unpaidHours: Math.ceil(unpaidMinutes / 60),
+          unpaidDays: unpaidDays,
         },
         { transaction },
       );
 
       await transaction.commit();
 
-      // Build detailed message
-      const totalApprovedHours = approvedRequests.reduce((sum, lr) => sum + lr.hours, 0) + leaveRequest.hours;
-      const totalPaidHours = approvedRequests.reduce(
-        (sum, lr) => sum + (lr.hours - (lr.unpaidHours || 0)),
-        0,
-      ) + (paidMinutes / 60);
-      const totalUnpaidHours = approvedRequests.reduce(
-        (sum, lr) => sum + (lr.unpaidHours || 0),
-        0,
-      ) + unpaidHours;
-
+      const paidDays = paidMinutes / (9 * 60);
       let message = 'Leave request approved. ';
-      
       if (isNextMonth) {
         message += `This is for next month (${month}/${year}), calculated as a fresh month. `;
       }
-
-      if (approvedRequests.length === 0) {
-        // First approved request for this month
-        if (unpaidHours === 0) {
-          message += `${(paidMinutes / 60).toFixed(1)} hours deducted from ${(balance.availableMinutes / 60).toFixed(1)} hours leave balance.`;
-        } else {
-          message += `${(paidMinutes / 60).toFixed(1)} hours deducted from ${(balance.availableMinutes / 60).toFixed(1)} hours leave balance, ${unpaidHours} hours marked as unpaid leave.`;
-        }
+      if (unpaidDays > 0) {
+        message += `${paidDays.toFixed(1)} day(s) deducted from leave balance, ${unpaidDays} day(s) will be deducted from salary.`;
       } else {
-        // Multiple approved requests
-        message += `You now have ${totalApprovedHours} hours of approved leave for this month: ${totalPaidHours.toFixed(1)} hours paid, ${totalUnpaidHours.toFixed(1)} hours unpaid.`;
+        message += `${paidDays.toFixed(1)} day(s) deducted from leave balance.`;
       }
 
       return {
         id: leaveRequest.id,
         status: 'approved',
+        paidDays,
+        unpaidDays,
         paidHours: paidMinutes / 60,
-        unpaidHours: unpaidHours,
+        unpaidHours: Math.ceil(unpaidMinutes / 60),
         message,
         breakdown: {
-          totalApprovedHours: totalApprovedHours,
-          totalPaidHours: totalPaidHours,
-          totalUnpaidHours: totalUnpaidHours,
-          isNextMonth: isNextMonth,
+          totalApprovedDays: days,
+          paidDays,
+          unpaidDays,
+          isNextMonth,
         },
       };
     } catch (error) {

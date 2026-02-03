@@ -206,6 +206,42 @@ export class AdminController {
     });
   }
 
+  @Post('attendance')
+  @ApiOperation({
+    summary: 'Create attendance entry (Admin only)',
+    description: 'Create check-in/check-out for any employee and date. Admin can select any times.',
+  })
+  @ApiResponse({ status: 201, description: 'Attendance created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid input or attendance already exists for date' })
+  createAttendance(
+    @Body() body: { employeeId: string; date: string; checkInTime: string; checkOutTime: string },
+  ) {
+    return this.attendanceService.createAttendanceByAdmin(
+      body.employeeId,
+      body.date,
+      new Date(body.checkInTime),
+      new Date(body.checkOutTime),
+    );
+  }
+
+  @Patch('attendance/:id')
+  @ApiOperation({
+    summary: 'Update attendance check-in/check-out (Admin only)',
+    description: 'Modify check-in and/or check-out for any attendance. Recalculates late, half-day, and salary.',
+  })
+  @ApiParam({ name: 'id', description: 'Attendance UUID' })
+  @ApiResponse({ status: 200, description: 'Attendance updated successfully' })
+  @ApiResponse({ status: 404, description: 'Attendance not found' })
+  updateAttendance(
+    @Param('id') id: string,
+    @Body() body: { checkInTime?: string; checkOutTime?: string },
+  ) {
+    const payload: { checkInTime?: Date; checkOutTime?: Date } = {};
+    if (body.checkInTime) payload.checkInTime = new Date(body.checkInTime);
+    if (body.checkOutTime) payload.checkOutTime = new Date(body.checkOutTime);
+    return this.attendanceService.updateAttendanceByAdmin(id, payload);
+  }
+
   @Get('leave-requests')
   @ApiOperation({
     summary: 'Get all leave requests (Admin only)',

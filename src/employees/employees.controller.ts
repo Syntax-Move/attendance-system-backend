@@ -54,6 +54,12 @@ export class EmployeesController {
     type: String,
     description: 'Filter by designation',
   })
+  @ApiQuery({
+    name: 'deletedOnly',
+    required: false,
+    type: Boolean,
+    description: 'If true, return only soft-deleted employees',
+  })
   @ApiResponse({
     status: 200,
     description: 'Employees retrieved successfully',
@@ -90,12 +96,14 @@ export class EmployeesController {
     @Query('status') status?: string,
     @Query('isActive') isActive?: string,
     @Query('designation') designation?: string,
+    @Query('deletedOnly') deletedOnly?: string,
   ) {
     return this.employeesService.findAll({
       search,
       status,
       isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
       designation,
+      deletedOnly: deletedOnly === 'true',
     });
   }
 
@@ -279,6 +287,28 @@ export class EmployeesController {
   @ApiResponse({ status: 404, description: 'Employee not found' })
   delete(@Param('id') id: string) {
     return this.employeesService.delete(id);
+  }
+
+  @Patch(':id/restore')
+  @UseGuards(AdminGuard)
+  @ApiOperation({
+    summary: 'Restore deleted employee (Admin only)',
+    description: 'Restores a soft-deleted employee and their user account. Sets deletedAt to null and isActive to true so they can log in again.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Employee UUID',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Employee restored successfully',
+  })
+  @ApiResponse({ status: 400, description: 'Employee is not deleted' })
+  @ApiResponse({ status: 403, description: 'Admin access required' })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  restore(@Param('id') id: string) {
+    return this.employeesService.restore(id);
   }
 }
 
