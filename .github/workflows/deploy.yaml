@@ -61,11 +61,19 @@ jobs:
           APP_PATH=$(pwd)/dist/src/main.js
           echo "Starting PM2 with path: $APP_PATH"
 
+          # # 8) Restart with PM2 (use unique names per env)
+          # if [ "${{ github.ref_name }}" = "dev" ]; then
+          #   pm2 restart attendance-dev || pm2 start $APP_PATH --name attendance-dev
+          # elif [ "${{ github.ref_name }}" = "stg" ]; then
+          #   pm2 restart attendance-stg || pm2 start $APP_PATH --name attendance-stg
+          # elif [ "${{ github.ref_name }}" = "main" ]; then
+          #   pm2 restart attendance-prod || pm2 start $APP_PATH --name attendance-prod
+          # fi
           # 8) Restart with PM2 (use unique names per env)
           if [ "${{ github.ref_name }}" = "dev" ]; then
-            pm2 restart attendance-dev || pm2 start $APP_PATH --name attendance-dev
+            pm2 restart attendance-dev || pm2 start npm --name attendance-dev -- start:dev
           elif [ "${{ github.ref_name }}" = "stg" ]; then
-            pm2 restart attendance-stg || pm2 start $APP_PATH --name attendance-stg
+            pm2 restart attendance-stg || pm2 start npm --name attendance-stg -- start:stage
           elif [ "${{ github.ref_name }}" = "main" ]; then
-            pm2 restart attendance-prod || pm2 start $APP_PATH --name attendance-prod
+            pm2 restart attendance-prod || pm2 start npm --name attendance-prod -- start:prod
           fi
