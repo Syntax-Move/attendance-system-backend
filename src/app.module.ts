@@ -12,6 +12,7 @@ import { AdminModule } from './admin/admin.module';
 import { SeedsModule } from './database/seeds/seeds.module';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
+import attendanceConfig from './config/attendance.config';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import jwtConfig from './config/jwt.config';
         '.env.local',
         '.env',
       ],
-      load: [databaseConfig, jwtConfig],
+      load: [databaseConfig, jwtConfig, attendanceConfig],
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,

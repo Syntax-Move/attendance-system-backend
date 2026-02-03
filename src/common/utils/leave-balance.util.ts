@@ -6,15 +6,27 @@ import { Op } from 'sequelize';
 import { LeaveBalance } from '../../database/models/leave-balance.model';
 import { Employee } from '../../database/models/employee.model';
 
+const MINUTES_PER_DAY = 9 * 60; // 1 day = 9 hours
+
 @Injectable()
 export class LeaveBalanceUtil {
-  private readonly MONTHLY_LEAVE_MINUTES = 15 * 60; // 15 hours = 900 minutes
-  private readonly MAX_CARRYOVER_MINUTES = 9 * 60; // 9 hours = 540 minutes
+  private get MONTHLY_LEAVE_MINUTES(): number {
+    const att = this.configService.get('attendance');
+    const days = att?.paidLeavesPerMonthDays ?? 2;
+    return Math.round(days * MINUTES_PER_DAY);
+  }
+
+  private get MAX_CARRYOVER_MINUTES(): number {
+    const att = this.configService.get('attendance');
+    const days = att?.maxCarryoverLeaveDays ?? 1;
+    return Math.round(days * MINUTES_PER_DAY);
+  }
 
   constructor(
     @InjectModel(LeaveBalance)
     private leaveBalanceModel: typeof LeaveBalance,
     private sequelize: Sequelize,
+    private configService: ConfigService,
   ) {}
 
   /**

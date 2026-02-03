@@ -55,14 +55,25 @@ export class LeaveRequest extends Model<LeaveRequest> {
 
   @Column({
     type: DataType.INTEGER,
-    allowNull: false,
-    comment: 'Number of hours for leave (1-9)',
-    validate: {
-      min: 1,
-      max: 9,
-    },
+    allowNull: true,
+    comment: 'Legacy: hours for leave (1-9). Prefer days.',
   })
   declare hours: number;
+
+  @Column({
+    type: DataType.DECIMAL(4, 2),
+    allowNull: true,
+    comment: 'Leave in days (0.5, 1, 1.5, ...). 1 day = full working day.',
+  })
+  declare days: number;
+
+  @Column({
+    type: DataType.DECIMAL(4, 2),
+    allowNull: true,
+    defaultValue: 0,
+    comment: 'Excess days beyond leave balance (deducted from salary)',
+  })
+  declare unpaidDays: number;
 
   @Column({
     type: DataType.ENUM('pending', 'approved', 'rejected'),

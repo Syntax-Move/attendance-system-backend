@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AttendanceRulesUtil } from './attendance-rules.util';
 
 export interface SalaryCalculationResult {
   totalWorkedMinutes: number;
@@ -10,89 +10,63 @@ export interface SalaryCalculationResult {
   deductedAmount: number;
 }
 
+/**
+ * Salary calculation using attendance rules:
+ * - Working time only [m, m+9h]; before m or after m+9h does not count.
+ * - Half-day: required = 270 min, full day = 540 min.
+ * - No monthly short-minutes allowance: short minutes after leave are fully deducted from salary.
+ */
 @Injectable()
 export class SalaryCalculator {
-  private static readonly REQUIRED_MINUTES_PER_DAY = 9 * 60; // 9 hours
-  private readonly allowedShortMinutesPerMonth: number;
-
-  constructor(private configService: ConfigService) {
-    // Get from env, default to 10 hours (600 minutes)
-    // Note: User mentioned 15 hours, but explicitly said "if not env then 10 hours in minutes by default"
-    const envValue = this.configService.get<string>('MONTHLY_SHORT_MINUTES_ALLOWED');
-    this.allowedShortMinutesPerMonth = envValue 
-      ? parseInt(envValue, 10) 
-      : 10 * 60; // Default: 10 hours = 600 minutes
-  }
+  constructor(private attendanceRules: AttendanceRulesUtil) {}
 
   /**
-   * Calculate salary for a checkout
-   * Now considers leave balance when calculating deductions
+   * Calculate salary for a checkout.
+   * Uses working window [standard check-in, standard check-in + 9h] and half-day rule.
    */
   calculateSalary(
     checkInTime: Date,
     checkOutTime: Date,
+    date: Date,
+    isHalfDay: boolean,
     dailySalary: number,
     monthlyShortMinutesSoFar: number,
-    availableLeaveBalance: number = 0, // Available leave balance in minutes
+    availableLeaveBalance: number = 0,
   ): SalaryCalculationResult {
-    // Calculate worked minutes
-    const totalWorkedMinutes = Math.floor(
-      (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60),
+    const totalWorkedMinutes = this.attendanceRules.computeWorkingMinutes(
+      checkInTime,
+      checkOutTime,
+      date,
     );
+    const requiredMinutes = this.attendanceRules.getRequiredMinutesForDay(isHalfDay);
+    const shortMinutes = Math.max(0, requiredMinutes - totalWorkedMinutes);
+    const dailySalaryProportion = isHalfDay ? 0.5 : 1;
+    const effectiveDailySalary = dailySalary * dailySalaryProportion;
 
-    // Calculate short minutes (if worked less than required)
-    const shortMinutes = Math.max(
-      0,
-      SalaryCalculator.REQUIRED_MINUTES_PER_DAY - totalWorkedMinutes,
-    );
-
-    // Total short minutes for the month including today
     const monthlyShortMinutes = monthlyShortMinutesSoFar + shortMinutes;
+    const shortMinutesAfterLeave = Math.max(0, monthlyShortMinutes - availableLeaveBalance);
+    const deductionMinutes = shortMinutesAfterLeave;
 
-    // Calculate deduction minutes considering leave balance
-    // First, try to cover short minutes with leave balance
-    const shortMinutesAfterLeave = Math.max(
-      0,
-      monthlyShortMinutes - availableLeaveBalance,
-    );
-
-    // Then calculate deduction minutes (only if exceeds allowance after using leave)
-    const deductionMinutes = Math.max(
-      0,
-      shortMinutesAfterLeave - this.allowedShortMinutesPerMonth,
-    );
-
-    // Calculate per-minute salary rate
-    const perMinuteSalary = dailySalary / SalaryCalculator.REQUIRED_MINUTES_PER_DAY;
-
-    // Calculate deducted amount
+    const perMinuteSalary = effectiveDailySalary / requiredMinutes;
     const deductedAmount = deductionMinutes * perMinuteSalary;
-
-    // Calculate salary earned
-    const salaryEarned = dailySalary - deductedAmount;
+    const salaryEarned = Math.max(0, effectiveDailySalary - deductedAmount);
 
     return {
       totalWorkedMinutes,
       shortMinutes,
       monthlyShortMinutes,
       deductionMinutes,
-      salaryEarned: Math.max(0, salaryEarned),
+      salaryEarned,
       deductedAmount,
     };
   }
 
-  /**
-   * Get required minutes per day
-   */
-  getRequiredMinutesPerDay(): number {
-    return SalaryCalculator.REQUIRED_MINUTES_PER_DAY;
+  getRequiredMinutesPerDay(isHalfDay: boolean): number {
+    return this.attendanceRules.getRequiredMinutesForDay(isHalfDay);
   }
 
-  /**
-   * Get allowed short minutes per month
-   */
+  /** No monthly allowance in new system; returns 0 for compatibility. */
   getAllowedShortMinutesPerMonth(): number {
-    return this.allowedShortMinutesPerMonth;
+    return 0;
   }
 }
-

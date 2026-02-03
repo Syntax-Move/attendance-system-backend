@@ -6,6 +6,7 @@ import {
 import { InjectModel } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Op } from 'sequelize';
+import { UniqueConstraintError } from 'sequelize';
 import * as bcrypt from 'bcrypt';
 import { Employee } from '../database/models/employee.model';
 import { User } from '../database/models/user.model';
@@ -30,22 +31,23 @@ export class EmployeesService {
     status?: string;
     isActive?: boolean;
     designation?: string;
+    deletedOnly?: boolean;
   }): Promise<Employee[]> {
-    const whereClause: any = {
-      deletedAt: null, // Exclude deleted employees
-    };
+    const deletedOnly = filters?.deletedOnly === true;
 
-    // Build user where clause
-    const userWhereClause: any = {
-      deletedAt: null,
-    };
+    const whereClause: any = deletedOnly
+      ? { deletedAt: { [Op.ne]: null } }
+      : { deletedAt: null };
+
+    // Build user where clause (when not deletedOnly, exclude deleted users)
+    const userWhereClause: any = deletedOnly ? {} : { deletedAt: null };
 
     // Apply filters
     if (filters?.status) {
       whereClause.status = filters.status;
     }
 
-    if (filters?.isActive !== undefined) {
+    if (!deletedOnly && filters?.isActive !== undefined) {
       userWhereClause.isActive = filters.isActive;
     }
 
@@ -55,16 +57,10 @@ export class EmployeesService {
       };
     }
 
-    // Search filter (searches in fullName, email, phone, designation)
-    if (filters?.search) {
+    // Search filter (searches in fullName, email, phone, designation) - only for non-deleted list
+    if (filters?.search && !deletedOnly) {
       const searchTerm = `%${filters.search}%`;
       
-      // When searching, we need to find employees where either:
-      // 1. Employee fields (name, phone, designation) match, OR
-      // 2. User email matches
-      // Since Sequelize include with where requires both to match, we'll use two queries and combine
-      
-      // Query 1: Search in employee fields
       const employeeFieldsWhere: any = {
         deletedAt: null,
         [Op.or]: [
@@ -92,7 +88,6 @@ export class EmployeesService {
         order: [['createdAt', 'DESC']],
       });
 
-      // Query 2: Search in user email (exclude already found employees)
       const foundIds = employeesByFields.map(emp => emp.id);
       const userEmailWhere: any = {
         deletedAt: null,
@@ -121,11 +116,28 @@ export class EmployeesService {
         order: [['createdAt', 'DESC']],
       });
 
-      // Combine and sort by createdAt DESC
       const allEmployees = [...employeesByFields, ...employeesByEmail];
       return allEmployees.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
+    }
+
+    // Deleted-only list: simple query, include User regardless of deletedAt
+    if (deletedOnly) {
+      const deletedWhere: any = { deletedAt: { [Op.ne]: null } };
+      if (filters?.status) deletedWhere.status = filters.status;
+      if (filters?.designation) {
+        deletedWhere.designation = { [Op.iLike]: `%${filters.designation}%` };
+      }
+      return this.employeeModel.findAll({
+        where: deletedWhere,
+        include: [{ 
+          model: User, 
+          attributes: ['id', 'email', 'role', 'isActive'],
+          required: true,
+        }],
+        order: [['deletedAt', 'DESC']],
+      });
     }
 
     // Normal query without search
@@ -254,6 +266,9 @@ export class EmployeesService {
       return this.findById(employee.id);
     } catch (error) {
       await transaction.rollback();
+      if (error instanceof UniqueConstraintError && error.fields?.email) {
+        throw new BadRequestException('A user with this email already exists.');
+      }
       throw error;
     }
   }
@@ -319,6 +334,29 @@ export class EmployeesService {
     }
 
     return { message: 'Employee deleted successfully' };
+  }
+
+  async restore(id: string): Promise<Employee> {
+    const employee = await this.employeeModel.findOne({
+      where: { id },
+      include: [{ model: User, attributes: ['id', 'email', 'role', 'isActive'], required: true }],
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    if (employee.deletedAt == null) {
+      throw new BadRequestException('Employee is not deleted');
+    }
+
+    await employee.update({ deletedAt: null });
+    const user = await this.userModel.findByPk(employee.userId);
+    if (user) {
+      await user.update({ deletedAt: null, isActive: true });
+    }
+
+    return this.findById(id);
   }
 }
 
