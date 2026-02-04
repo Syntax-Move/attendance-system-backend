@@ -9,7 +9,7 @@ import { registerAs } from '@nestjs/config';
  * Leaves: PAID_LEAVES_PER_MONTH_DAYS per month, MAX_CARRYOVER_LEAVE_DAYS carry to next month (x >= y).
  */
 export default registerAs('attendance', () => {
-  const standardCheckin = process.env.STANDARD_CHECKIN_TIME || '09:00'; // HH:mm in PKT
+  const standardCheckin = process.env.STANDARD_CHECKIN_TIME || '12:00'; // HH:mm in PKT
   const [stdHour, stdMin] = standardCheckin.split(':').map(Number);
   return {
     timezone: process.env.TIMEZONE || 'Asia/Karachi',

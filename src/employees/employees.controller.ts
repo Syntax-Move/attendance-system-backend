@@ -60,6 +60,18 @@ export class EmployeesController {
     type: Boolean,
     description: 'If true, return only soft-deleted employees',
   })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (1-based). Default 1',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page. Default 20, max 100',
+  })
   @ApiResponse({
     status: 200,
     description: 'Employees retrieved successfully',
@@ -97,6 +109,8 @@ export class EmployeesController {
     @Query('isActive') isActive?: string,
     @Query('designation') designation?: string,
     @Query('deletedOnly') deletedOnly?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.employeesService.findAll({
       search,
@@ -104,6 +118,8 @@ export class EmployeesController {
       isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
       designation,
       deletedOnly: deletedOnly === 'true',
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 

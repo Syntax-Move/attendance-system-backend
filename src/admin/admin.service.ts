@@ -105,7 +105,7 @@ export class AdminService {
           ],
         },
       ],
-      order: [[Employee, 'fullName', 'ASC']],
+      order: [['employee', 'fullName', 'ASC']],
     });
 
     return summaries.map((summary) => ({
