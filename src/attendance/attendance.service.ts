@@ -423,56 +423,69 @@ export class AttendanceService {
     employeeId?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<any[]> {
-    // Always ensure current month's past working days have records (as unpaid leave)
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<{ data: any[]; total: number }> {
     await this.ensureCurrentMonthPastWorkingDays(query.employeeId);
 
-    const whereClause: any = {
-      deletedAt: null, // Exclude deleted attendances
-    };
-
-    if (query.employeeId) {
-      whereClause.employeeId = query.employeeId;
-    }
-
-    let startDate: Date | null = null;
-    let endDate: Date | null = null;
-
+    const whereClause: any = { deletedAt: null };
+    if (query.employeeId) whereClause.employeeId = query.employeeId;
     if (query.startDate && query.endDate) {
-      startDate = new Date(query.startDate);
-      endDate = new Date(query.endDate);
-      whereClause.date = {
-        [Op.between]: [startDate, endDate],
-      };
+      const startDate = new Date(query.startDate);
+      const endDate = new Date(query.endDate);
+      whereClause.date = { [Op.between]: [startDate, endDate] };
     }
+
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 15));
+    const offset = (page - 1) * limit;
+
+    const employeeWhere: any = { deletedAt: null };
+    if (query.search?.trim()) {
+      const term = `%${query.search.trim()}%`;
+      employeeWhere[Op.or] = [
+        { fullName: { [Op.iLike]: term } },
+        { phone: { [Op.iLike]: term } },
+        { designation: { [Op.iLike]: term } },
+        this.sequelize.where(this.sequelize.col('user.email'), { [Op.iLike]: term }),
+      ];
+    }
+
+    const includeOpt = [
+      {
+        model: Employee,
+        attributes: ['id', 'fullName', 'designation', 'phone'],
+        where: employeeWhere,
+        required: true,
+        include: [
+          {
+            model: Employee.associations.user.target,
+            as: 'user',
+            attributes: ['id', 'email'],
+            where: { deletedAt: null },
+            required: true,
+          },
+        ],
+      },
+    ];
+
+    const total = await this.attendanceModel.count({
+      where: whereClause,
+      include: includeOpt,
+      distinct: true,
+    });
 
     const attendances = await this.attendanceModel.findAll({
       where: whereClause,
-      include: [
-        {
-          model: Employee,
-          attributes: ['id', 'fullName', 'designation', 'phone'],
-          where: {
-            deletedAt: null, // Exclude deleted employees
-          },
-          required: true,
-          include: [
-            {
-              model: Employee.associations.user.target,
-              as: 'user',
-              attributes: ['id', 'email'],
-              where: {
-                deletedAt: null, // Exclude deleted users
-              },
-              required: true,
-            },
-          ],
-        },
-      ],
+      include: includeOpt,
       order: [['date', 'DESC']],
+      limit,
+      offset,
     });
 
-    return attendances.map((att) => att.get({ plain: true }));
+    const data = attendances.map((att) => att.get({ plain: true }));
+    return { data, total };
   }
 
   private async getMonthlyShortMinutes(
@@ -542,6 +555,7 @@ export class AttendanceService {
         checkOutTime: {
           [Op.not]: null,
         },
+        deletedAt: null,
       } as any,
       transaction,
     });
@@ -569,6 +583,31 @@ export class AttendanceService {
   }
 
   /**
+   * Parse "HH:mm" or "HH:mm:ss" to UTC hours and minutes (for bulk update).
+   */
+  private parseTimeToRef(timeStr: string): Date {
+    const parts = timeStr.trim().split(':').map((p) => parseInt(p, 10) || 0);
+    const h = parts[0] ?? 0;
+    const m = parts[1] ?? 0;
+    const s = parts[2] ?? 0;
+    return new Date(Date.UTC(2000, 0, 1, h, m, s));
+  }
+
+  /**
+   * Build a Date on the given calendar date with the time (UTC) from the time source.
+   * Ensures check-in/check-out are always stored for the correct attendance date.
+   */
+  private dateWithTimeFrom(calendarDate: Date, timeSource: Date): Date {
+    const y = calendarDate.getUTCFullYear();
+    const m = calendarDate.getUTCMonth();
+    const d = calendarDate.getUTCDate();
+    const h = timeSource.getUTCHours();
+    const min = timeSource.getUTCMinutes();
+    const s = timeSource.getUTCSeconds();
+    return new Date(Date.UTC(y, m, d, h, min, s));
+  }
+
+  /**
    * Admin: Create attendance for any employee and date with any check-in/check-out times.
    */
   async createAttendanceByAdmin(
@@ -585,7 +624,13 @@ export class AttendanceService {
       throw new BadRequestException('Check-out time must be after check-in time');
     }
     const dateOnly = new Date(date);
-    dateOnly.setHours(0, 0, 0, 0);
+    dateOnly.setUTCHours(0, 0, 0, 0);
+    // Pin check-in/check-out to the requested date (ignore any date part in the client time)
+    const normalizedCheckIn = this.dateWithTimeFrom(dateOnly, checkInTime);
+    const normalizedCheckOut = this.dateWithTimeFrom(dateOnly, checkOutTime);
+    if (normalizedCheckOut <= normalizedCheckIn) {
+      throw new BadRequestException('Check-out time must be after check-in time');
+    }
 
     const existing = await this.attendanceModel.findOne({
       where: { employeeId, date: dateOnly, deletedAt: null },
@@ -594,8 +639,8 @@ export class AttendanceService {
       throw new BadRequestException('Attendance already exists for this employee and date. Use update instead.');
     }
 
-    const isLate = this.attendanceRules.isLate(checkInTime, dateOnly);
-    const isHalfDay = this.attendanceRules.isHalfDay(checkInTime, dateOnly);
+    const isLate = this.attendanceRules.isLate(normalizedCheckIn, dateOnly);
+    const isHalfDay = this.attendanceRules.isHalfDay(normalizedCheckIn, dateOnly);
 
     const transaction = await this.sequelize.transaction();
     try {
@@ -603,8 +648,8 @@ export class AttendanceService {
         {
           employeeId,
           date: dateOnly,
-          checkInTime,
-          checkOutTime,
+          checkInTime: normalizedCheckIn,
+          checkOutTime: normalizedCheckOut,
           isActive: true,
           isLate,
           isHalfDay,
@@ -628,8 +673,8 @@ export class AttendanceService {
         employee.joiningDate,
       );
       const calculation = this.salaryCalculator.calculateSalary(
-        checkInTime,
-        checkOutTime,
+        normalizedCheckIn,
+        normalizedCheckOut,
         dateOnly,
         isHalfDay,
         parseFloat(employee.dailySalary.toString()),
@@ -692,25 +737,30 @@ export class AttendanceService {
       throw new NotFoundException('Attendance record not found');
     }
 
-    const checkInTime = body.checkInTime ?? attendance.checkInTime;
-    const checkOutTime = body.checkOutTime ?? attendance.checkOutTime;
-    if (!checkInTime || !checkOutTime) {
+    const rawCheckIn = body.checkInTime ?? attendance.checkInTime;
+    const rawCheckOut = body.checkOutTime ?? attendance.checkOutTime;
+    if (!rawCheckIn || !rawCheckOut) {
       throw new BadRequestException('Both check-in and check-out are required to recalculate salary.');
     }
+    const dateOnly = new Date(attendance.date);
+    dateOnly.setUTCHours(0, 0, 0, 0);
+    // Pin check-in/check-out to the attendance date (ignore any date part from client)
+    const checkInTime = body.checkInTime
+      ? this.dateWithTimeFrom(dateOnly, body.checkInTime)
+      : rawCheckIn;
+    const checkOutTime = body.checkOutTime
+      ? this.dateWithTimeFrom(dateOnly, body.checkOutTime)
+      : rawCheckOut;
     if (checkOutTime <= checkInTime) {
       throw new BadRequestException('Check-out time must be after check-in time');
     }
-
-    const dateOnly = new Date(attendance.date);
-    dateOnly.setHours(0, 0, 0, 0);
     const isLate = this.attendanceRules.isLate(checkInTime, dateOnly);
     const isHalfDay = this.attendanceRules.isHalfDay(checkInTime, dateOnly);
     const employeeId = attendance.employeeId;
     const employee = attendance.get('employee') as Employee;
     const month = dateOnly.getMonth() + 1;
     const year = dateOnly.getFullYear();
-    console.log({employee, employeeId});
-    if(!employee) {
+    if (!employee) {
       throw new NotFoundException('Employee not found');
     }
     const transaction = await this.sequelize.transaction();
@@ -761,6 +811,7 @@ export class AttendanceService {
           checkOutTime,
           isLate,
           isHalfDay,
+          unpaidLeave: false, // Admin set times so this is no longer an unpaid-leave placeholder
           totalWorkedMinutes: calculation.totalWorkedMinutes,
           shortMinutes: calculation.shortMinutes,
           salaryEarned: calculation.salaryEarned,
@@ -781,6 +832,46 @@ export class AttendanceService {
     }
   }
 
+  /**
+   * Admin: Bulk update check-in/check-out for multiple attendance records.
+   * Times are applied to each record's own date. checkInTime and checkOutTime are "HH:mm" (UTC).
+   */
+  async bulkUpdateCheckInOut(
+    ids: string[],
+    checkInTimeStr: string,
+    checkOutTimeStr: string,
+  ): Promise<{ updated: number; errors: { id: string; message: string }[] }> {
+    const timeRefIn = this.parseTimeToRef(checkInTimeStr);
+    const timeRefOut = this.parseTimeToRef(checkOutTimeStr);
+    const errors: { id: string; message: string }[] = [];
+    let updated = 0;
+    for (const id of ids) {
+      try {
+        const attendance = await this.attendanceModel.findOne({
+          where: { id, deletedAt: null },
+          include: [{ model: Employee }],
+        });
+        if (!attendance) {
+          errors.push({ id, message: 'Attendance not found' });
+          continue;
+        }
+        const dateOnly = new Date(attendance.date);
+        dateOnly.setUTCHours(0, 0, 0, 0);
+        const checkInTime = this.dateWithTimeFrom(dateOnly, timeRefIn);
+        const checkOutTime = this.dateWithTimeFrom(dateOnly, timeRefOut);
+        if (checkOutTime <= checkInTime) {
+          errors.push({ id, message: 'Check-out must be after check-in' });
+          continue;
+        }
+        await this.updateAttendanceByAdmin(id, { checkInTime, checkOutTime });
+        updated += 1;
+      } catch (e: any) {
+        errors.push({ id, message: e?.message || 'Update failed' });
+      }
+    }
+    return { updated, errors };
+  }
+
   async deleteAttendanceById(id: string): Promise<{ message: string }> {
     const attendance = await this.attendanceModel.findOne({
       where: {
@@ -798,21 +889,28 @@ export class AttendanceService {
     try {
       const employeeId = attendance.employeeId;
       const attendanceDate = new Date(attendance.date);
-      const month = attendanceDate.getMonth() + 1;
-      const year = attendanceDate.getFullYear();
+      const month = attendanceDate.getUTCMonth() + 1;
+      const year = attendanceDate.getUTCFullYear();
 
-      // Soft delete the attendance
-      await attendance.update({ deletedAt: new Date() }, { transaction });
+      // Remove related deduction ledger entries
+      await this.deductionLedgerModel.destroy({
+        where: { attendanceId: id },
+        transaction,
+      });
 
-      // Recalculate monthly summary if attendance had check-out
-      if (attendance.checkOutTime) {
-        await this.recalculateMonthlySummary(
-          employeeId,
-          month,
-          year,
-          transaction,
-        );
-      }
+      // Hard delete the attendance record
+      await this.attendanceModel.destroy({
+        where: { id },
+        transaction,
+      });
+
+      // Recalculate monthly summary (had check-out so affected totals)
+      await this.recalculateMonthlySummary(
+        employeeId,
+        month,
+        year,
+        transaction,
+      );
 
       await transaction.commit();
 
@@ -918,6 +1016,7 @@ export class AttendanceService {
         checkOutTime: {
           [Op.not]: null,
         },
+        deletedAt: null,
       } as any,
       transaction,
     });

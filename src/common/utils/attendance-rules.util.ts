@@ -59,7 +59,9 @@ export class AttendanceRulesUtil {
    */
   isLate(checkInTime: Date, date: Date): boolean {
     const standardStart = this.getStandardCheckinForDate(date);
+    
     const lateThresholdMs = this.config.lateThresholdMinutes * 60 * 1000;
+    console.log({checkInTime, standardStart, lateThresholdMs, date});
     return checkInTime.getTime() > standardStart.getTime() + lateThresholdMs;
   }
 
@@ -69,6 +71,7 @@ export class AttendanceRulesUtil {
   isHalfDay(checkInTime: Date, date: Date): boolean {
     const standardStart = this.getStandardCheckinForDate(date);
     const halfDayMs = this.config.halfDayLateMinutes * 60 * 1000;
+    console.log({checkInTime, standardStart, halfDayMs, date});
     return checkInTime.getTime() > standardStart.getTime() + halfDayMs;
   }
 

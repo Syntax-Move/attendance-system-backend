@@ -45,8 +45,8 @@ export class SalaryCalculator {
 
     const monthlyShortMinutes = monthlyShortMinutesSoFar + shortMinutes;
     const shortMinutesAfterLeave = Math.max(0, monthlyShortMinutes - availableLeaveBalance);
-    const deductionMinutes = shortMinutesAfterLeave;
-
+    // Deduct only this day's short from this day's salary (do not apply whole month's short to one day)
+    const deductionMinutes = shortMinutes;
     const perMinuteSalary = effectiveDailySalary / requiredMinutes;
     const deductedAmount = deductionMinutes * perMinuteSalary;
     const salaryEarned = Math.max(0, effectiveDailySalary - deductedAmount);

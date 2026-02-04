@@ -32,125 +32,98 @@ export class EmployeesService {
     isActive?: boolean;
     designation?: string;
     deletedOnly?: boolean;
-  }): Promise<Employee[]> {
+    page?: number;
+    limit?: number;
+  }): Promise<{ data: Employee[]; total: number }> {
     const deletedOnly = filters?.deletedOnly === true;
+    const page = Math.max(1, filters?.page ?? 1);
+    const limit = Math.min(500, Math.max(1, filters?.limit ?? 20));
+    const offset = (page - 1) * limit;
 
     const whereClause: any = deletedOnly
       ? { deletedAt: { [Op.ne]: null } }
       : { deletedAt: null };
 
-    // Build user where clause (when not deletedOnly, exclude deleted users)
     const userWhereClause: any = deletedOnly ? {} : { deletedAt: null };
 
-    // Apply filters
-    if (filters?.status) {
-      whereClause.status = filters.status;
-    }
+    if (filters?.status) whereClause.status = filters.status;
+    if (!deletedOnly && filters?.isActive !== undefined) userWhereClause.isActive = filters.isActive;
+    if (filters?.designation) whereClause.designation = { [Op.iLike]: `%${filters.designation}%` };
 
-    if (!deletedOnly && filters?.isActive !== undefined) {
-      userWhereClause.isActive = filters.isActive;
-    }
+    const includeUser = [
+      {
+        model: User,
+        attributes: ['id', 'email', 'role', 'isActive'],
+        where: userWhereClause,
+        required: true,
+      },
+    ];
 
-    if (filters?.designation) {
-      whereClause.designation = {
-        [Op.iLike]: `%${filters.designation}%`,
-      };
-    }
-
-    // Search filter (searches in fullName, email, phone, designation) - only for non-deleted list
+    // Search: single query with OR (employee fields or user email)
     if (filters?.search && !deletedOnly) {
       const searchTerm = `%${filters.search}%`;
-      
-      const employeeFieldsWhere: any = {
+      const searchWhere: any = {
         deletedAt: null,
         [Op.or]: [
           { fullName: { [Op.iLike]: searchTerm } },
           { phone: { [Op.iLike]: searchTerm } },
           { designation: { [Op.iLike]: searchTerm } },
+          this.sequelize.where(this.sequelize.col('user.email'), { [Op.iLike]: searchTerm }),
         ],
       };
-      if (filters?.status) employeeFieldsWhere.status = filters.status;
-      if (filters?.designation && !filters.search.includes(filters.designation)) {
-        employeeFieldsWhere.designation = { [Op.iLike]: `%${filters.designation}%` };
-      }
+      if (filters?.status) searchWhere.status = filters.status;
+      if (filters?.designation) searchWhere.designation = { [Op.iLike]: `%${filters.designation}%` };
 
-      const employeesByFields = await this.employeeModel.findAll({
-        where: employeeFieldsWhere,
-        include: [{ 
-          model: User, 
-          attributes: ['id', 'email', 'role', 'isActive'],
-          where: {
-            deletedAt: null,
-            ...(filters?.isActive !== undefined ? { isActive: filters.isActive } : {}),
-          },
-          required: true,
-        }],
-        order: [['createdAt', 'DESC']],
+      const total = await this.employeeModel.count({
+        where: searchWhere,
+        include: includeUser,
+        distinct: true,
       });
-
-      const foundIds = employeesByFields.map(emp => emp.id);
-      const userEmailWhere: any = {
-        deletedAt: null,
-        email: { [Op.iLike]: searchTerm },
-        ...(filters?.isActive !== undefined ? { isActive: filters.isActive } : {}),
-      };
-      
-      const employeeWhereForEmail: any = {
-        deletedAt: null,
-        ...(filters?.status ? { status: filters.status } : {}),
-        ...(filters?.designation ? { designation: { [Op.iLike]: `%${filters.designation}%` } } : {}),
-      };
-      
-      if (foundIds.length > 0) {
-        employeeWhereForEmail.id = { [Op.notIn]: foundIds };
-      }
-
-      const employeesByEmail = await this.employeeModel.findAll({
-        where: employeeWhereForEmail,
-        include: [{ 
-          model: User, 
-          attributes: ['id', 'email', 'role', 'isActive'],
-          where: userEmailWhere,
-          required: true,
-        }],
+      const data = await this.employeeModel.findAll({
+        where: searchWhere,
+        include: includeUser,
         order: [['createdAt', 'DESC']],
+        limit,
+        offset,
       });
-
-      const allEmployees = [...employeesByFields, ...employeesByEmail];
-      return allEmployees.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      return { data, total };
     }
 
-    // Deleted-only list: simple query, include User regardless of deletedAt
+    // Deleted-only list
     if (deletedOnly) {
       const deletedWhere: any = { deletedAt: { [Op.ne]: null } };
       if (filters?.status) deletedWhere.status = filters.status;
-      if (filters?.designation) {
-        deletedWhere.designation = { [Op.iLike]: `%${filters.designation}%` };
-      }
-      return this.employeeModel.findAll({
+      if (filters?.designation) deletedWhere.designation = { [Op.iLike]: `%${filters.designation}%` };
+      const includeDeletedUser = [{ model: User, attributes: ['id', 'email', 'role', 'isActive'], required: true }];
+      const total = await this.employeeModel.count({
         where: deletedWhere,
-        include: [{ 
-          model: User, 
-          attributes: ['id', 'email', 'role', 'isActive'],
-          required: true,
-        }],
-        order: [['deletedAt', 'DESC']],
+        include: includeDeletedUser,
+        distinct: true,
       });
+      const data = await this.employeeModel.findAll({
+        where: deletedWhere,
+        include: includeDeletedUser,
+        order: [['deletedAt', 'DESC']],
+        limit,
+        offset,
+      });
+      return { data, total };
     }
 
-    // Normal query without search
-    return this.employeeModel.findAll({
+    // Normal query
+    const total = await this.employeeModel.count({
       where: whereClause,
-      include: [{ 
-        model: User, 
-        attributes: ['id', 'email', 'role', 'isActive'],
-        where: userWhereClause,
-        required: true,
-      }],
-      order: [['createdAt', 'DESC']],
+      include: includeUser,
+      distinct: true,
     });
+    const data = await this.employeeModel.findAll({
+      where: whereClause,
+      include: includeUser,
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset,
+    });
+    return { data, total };
   }
 
   async findById(id: string): Promise<Employee> {

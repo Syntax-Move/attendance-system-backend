@@ -28,6 +28,12 @@ async function run() {
     await sequelize.authenticate();
     console.log('✓ Database connected.');
 
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS "SequelizeMeta" (
+        name VARCHAR(255) NOT NULL PRIMARY KEY
+      );
+    `);
+
     const migration = require(path.join(__dirname, '20240120000010-add-attendance-rules-and-leave-days.js'));
     const queryInterface = sequelize.getQueryInterface();
     const SequelizeModule = require('sequelize').Sequelize;

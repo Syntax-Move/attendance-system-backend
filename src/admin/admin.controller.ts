@@ -9,6 +9,7 @@ import {
   Delete,
   UseGuards,
   ParseIntPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
@@ -190,19 +191,43 @@ export class AdminController {
     type: String,
     description: 'End date in YYYY-MM-DD format',
   })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (1-based). Default 1',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Items per page. Default 15, max 100',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Search by employee name, email, phone, or designation',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Attendance records retrieved successfully',
+    description: 'Attendance records retrieved successfully. Returns { data, total }.',
   })
   getAllAttendance(
     @Query('employeeId') employeeId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ) {
     return this.attendanceService.getAllAttendance({
       employeeId,
       startDate,
       endDate,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      search,
     });
   }
 
@@ -221,6 +246,44 @@ export class AdminController {
       body.date,
       new Date(body.checkInTime),
       new Date(body.checkOutTime),
+    );
+  }
+
+  @Patch('attendance/bulk')
+  @ApiOperation({
+    summary: 'Bulk update check-in/check-out (Admin only)',
+    description: 'Apply the same check-in and check-out time to multiple attendance records. Times are applied to each record\'s own date. Times in HH:mm (UTC).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk update result',
+    schema: {
+      type: 'object',
+      properties: {
+        updated: { type: 'number' },
+        errors: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+  })
+  bulkUpdateAttendance(
+    @Body() body: { ids: string[]; checkInTime: string; checkOutTime: string },
+  ) {
+    if (!body.ids?.length || !body.checkInTime || !body.checkOutTime) {
+      throw new BadRequestException('ids, checkInTime, and checkOutTime are required');
+    }
+    return this.attendanceService.bulkUpdateCheckInOut(
+      body.ids,
+      body.checkInTime,
+      body.checkOutTime,
     );
   }
 

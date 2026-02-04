@@ -1,9 +1,9 @@
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('database', () => {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'prod';
   const useSSL = process.env.DB_SSL === 'true' || isProduction;
-
+  console.log({isProduction, useSSL, NODE_ENV: process.env.NODE_ENV});
   return {
     dialect: 'postgres',
     host: process.env.DB_HOST || 'localhost',
