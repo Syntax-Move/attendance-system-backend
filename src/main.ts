@@ -7,11 +7,17 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS
+  // Enable CORS (PATCH required for attendance/employee/leave updates)
   app.enableCors({
+<<<<<<< Updated upstream
     // allow all origins
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+=======
+    origin: true, // reflect request origin (required when credentials: true; '*' is invalid with credentials)
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+>>>>>>> Stashed changes
     credentials: true,
   });
 
