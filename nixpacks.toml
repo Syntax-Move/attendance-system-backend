@@ -1,0 +1,18 @@
+# Nixpacks config for Coolify when not using Dockerfile
+# Fixes: Missing script "build" (use development at build time so devDependencies are installed)
+
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "node dist/src/main.js"
+
+[variables]
+# Build as development so devDependencies (e.g. @nestjs/cli) are installed
+NODE_ENV = "development"

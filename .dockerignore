@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules
+dist
+npm-debug.log*
+
+# Git and CI
+.git
+.github
+.gitignore
+
+# Tests and coverage
+coverage
+.nyc_output
+*.spec.ts
+test
+
+# IDE and OS
+.idea
+.vscode
+.DS_Store
+
+# Environment (Coolify injects env at runtime)
+.env
+.env.*
+!.env.example
+
+# Docs and misc
+*.md
+!README.md
