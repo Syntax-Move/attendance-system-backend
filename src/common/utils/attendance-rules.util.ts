@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-const PKT_UTC_OFFSET_HOURS = 5;
+/** Pakistan Standard Time is UTC+5. Export for use when parsing PKT times. */
+export const PKT_UTC_OFFSET_HOURS = 5;
 
 export interface AttendanceRulesConfig {
   standardCheckinHour: number;
