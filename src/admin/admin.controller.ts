@@ -252,7 +252,7 @@ export class AdminController {
   @Patch('attendance/bulk')
   @ApiOperation({
     summary: 'Bulk update check-in/check-out (Admin only)',
-    description: 'Apply the same check-in and check-out time to multiple attendance records. Times are applied to each record\'s own date. Times in HH:mm (UTC).',
+    description: 'Apply the same check-in and check-out time to multiple attendance records. Times are applied to each record\'s own date. Times in HH:mm (PKT, Pakistan Standard Time).',
   })
   @ApiResponse({
     status: 200,

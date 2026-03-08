@@ -17,7 +17,7 @@ import { LeaveBalance } from '../database/models/leave-balance.model';
 import { PublicHoliday } from '../database/models/public-holiday.model';
 import { SalaryCalculator } from '../common/utils/salary-calculator.util';
 import { LeaveBalanceUtil } from '../common/utils/leave-balance.util';
-import { AttendanceRulesUtil } from '../common/utils/attendance-rules.util';
+import { AttendanceRulesUtil, PKT_UTC_OFFSET_HOURS } from '../common/utils/attendance-rules.util';
 import { WorkingDaysUtil } from '../common/utils/working-days.util';
 import { QRCodeValidator } from '../common/utils/qr-code-validator.util';
 import { CheckInResponseDto } from './dto/check-in-response.dto';
@@ -583,14 +583,16 @@ export class AttendanceService {
   }
 
   /**
-   * Parse "HH:mm" or "HH:mm:ss" to UTC hours and minutes (for bulk update).
+   * Parse "HH:mm" or "HH:mm:ss" as PKT (Pakistan Time, UTC+5) and return a ref Date
+   * whose UTC components represent that moment (for use with dateWithTimeFrom).
    */
   private parseTimeToRef(timeStr: string): Date {
     const parts = timeStr.trim().split(':').map((p) => parseInt(p, 10) || 0);
-    const h = parts[0] ?? 0;
+    const pktHour = parts[0] ?? 0;
     const m = parts[1] ?? 0;
     const s = parts[2] ?? 0;
-    return new Date(Date.UTC(2000, 0, 1, h, m, s));
+    const utcHour = (pktHour - PKT_UTC_OFFSET_HOURS + 24) % 24;
+    return new Date(Date.UTC(2000, 0, 1, utcHour, m, s));
   }
 
   /**
